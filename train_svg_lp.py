@@ -34,7 +34,7 @@ parser.add_argument('--rnn_layers', type=int, default=2, help='number of layers'
 parser.add_argument('--z_dim', type=int, default=10, help='dimensionality of z_t')
 parser.add_argument('--g_dim', type=int, default=64, help='dimensionality of encoder output vector and decoder input vector')
 parser.add_argument('--beta', type=float, default=0.0001, help='weighting on KL to prior')
-parser.add_argument('--model', default='dcgan | vgg', help='model type')
+parser.add_argument('--model', default='dcgan', help='model type (dcgan | vgg)')
 parser.add_argument('--data_threads', type=int, default=5, help='number of data loading threads')
 parser.add_argument('--num_digits', type=int, default=2, help='number of digits for moving mnist')
 parser.add_argument('--last_frame_skip', action='store_true', help='if true, skip connections go between frame t and frame t+t rather than last ground truth frame')

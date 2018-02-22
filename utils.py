@@ -29,14 +29,14 @@ def load_dataset(opt):
         from data.moving_mnist import MovingMNIST
         train_data = MovingMNIST(
                 train=True,
-                data_root='',
+                data_root=opt.data_root,
                 seq_len=opt.max_step,
                 image_size=opt.image_width,
                 deterministic=False,
                 num_digits=opt.num_digits)
         test_data = MovingMNIST(
                 train=False,
-                data_root='',
+                data_root=opt.data_root,
                 seq_len=opt.n_eval,
                 image_size=opt.image_width,
                 deterministic=False,
