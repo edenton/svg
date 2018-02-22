@@ -1,6 +1,5 @@
 # Stochastic Video Generation with a Learned Prior
-[paper](https://arxiv.org/abs/1802.07687) 
-[project page](https://sites.google.com/view/svglp/)
+This is code for the paper [Stochastic Video Generation with a Learned Prior](https://arxiv.org/abs/1802.07687) by Emily Denton and Rob Fergus. See the [project page](https://sites.google.com/view/svglp/) for details and generated video sequences.
 
 ##  Training on Stochastic Moving MNIST (SM-MNIST)
 To train the SVG-LP model on the 2 digit SM-MNIST dataset run: 
