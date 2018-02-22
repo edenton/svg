@@ -1,4 +1,6 @@
-# svg
+# Stochastic Video Generation with a Learned Prior
+[paper](https://arxiv.org/abs/1802.07687) 
+[project page](https://sites.google.com/view/svglp/)
 
 ##  Training on Stochastic Moving MNIST (SM-MNIST)
 To train the SVG-LP model on the 2 digit SM-MNIST dataset run: 
