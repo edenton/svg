@@ -44,10 +44,12 @@ def load_dataset(opt):
     elif opt.dataset == 'bair':
         from data.bair import RobotPush 
         train_data = RobotPush(
+                data_root=opt.data_root,
                 train=True,
                 seq_len=opt.max_step,
                 image_size=opt.image_width)
         test_data = RobotPush(
+                data_root=opt.data_root,
                 train=False,
                 seq_len=opt.n_eval,
                 image_size=opt.image_width)
