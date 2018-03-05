@@ -43,6 +43,7 @@ parser.add_argument('--last_frame_skip', action='store_true', help='if true, ski
 
 opt = parser.parse_args()
 if opt.model_dir != '':
+    # load model and continue training from checkpoint
     saved_model = torch.load('%s/model.pth' % opt.model_dir)
     optimizer = opt.optimizer
     model_dir = opt.model_dir
