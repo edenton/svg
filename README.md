@@ -13,7 +13,7 @@ To download the BAIR robot push dataset run:
 ```
 sh data/download_bair.sh /path/to/data/
 ```
-This will download the dataset in tfrecord format into the specified directory. To train the pytorch models, we need to first convert to tfrecord data into .png images by running:
+This will download the dataset in tfrecord format into the specified directory. To train the pytorch models, we need to first convert the tfrecord data into .png images by running:
 ```
 python data/convert_bair.py --data_dir /path/to/data/
 ```
@@ -23,7 +23,7 @@ Now we can train the SVG-LP model by running:
 python train_svg_lp.py --dataset bair --g_dim 128 --z_dim 64 --beta 0.0001 --n_past 2 --n_future 10 --channels 3 --data_root /path/to/data/ --log_dir /logs/will/be/saved/here/
 ```
 
-To generate images with a pretrain SVG-LP model run:
+To generate images with a pretrained SVG-LP model run:
 ```
 python generate_svg_lp.py --model_path pretrain_models/svglp_bair.pth --log_dir /generated/images/will/save/here/
 ```

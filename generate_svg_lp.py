@@ -57,8 +57,8 @@ frame_predictor.eval()
 prior.eval()
 encoder = tmp['encoder']
 decoder = tmp['decoder']
-#encoder.eval()
-#decoder.eval()
+encoder.eval()
+decoder.eval()
 frame_predictor.batch_size = opt.batch_size
 posterior.batch_size = opt.batch_size
 prior.batch_size = opt.batch_size
