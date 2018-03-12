@@ -20,7 +20,7 @@ python data/convert_bair.py --data_dir /path/to/data/
 This may take some time. Images will be saved in ```/path/to/data/processeddata```.
 Now we can train the SVG-LP model by running:
 ```
-python train_svg_lp.py --dataset bair --g_dim 128 --z_dim 64 --beta 0.0001 --n_past 2 --n_future 10 --channels 3 --data_root /path/to/data/ --log_dir /logs/will/be/saved/here/
+python train_svg_lp.py --dataset bair --model vgg --g_dim 128 --z_dim 64 --beta 0.0001 --n_past 2 --n_future 10 --channels 3 --data_root /path/to/data/ --log_dir /logs/will/be/saved/here/
 ```
 
 To generate images with a pretrained SVG-LP model run:

@@ -55,6 +55,7 @@ posterior = tmp['posterior']
 prior = tmp['prior']
 frame_predictor.eval()
 prior.eval()
+posterior.eval()
 encoder = tmp['encoder']
 decoder = tmp['decoder']
 encoder.eval()
@@ -115,7 +116,7 @@ testing_batch_generator = get_testing_batch()
 
 # --------- eval funtions ------------------------------------
 
-def make_gifs(x, idx):
+def make_gifs(x, idx, name):
     # get approx posterior sample
     frame_predictor.hidden = frame_predictor.init_hidden()
     posterior.hidden = posterior.init_hidden()
@@ -130,7 +131,7 @@ def make_gifs(x, idx):
         else:
             h, _ = h
         h = h.detach()
-        z_t, _, _= posterior(h_target)
+        _, z_t, _= posterior(h_target) # take the mean
         if i < opt.n_past:
             frame_predictor(torch.cat([h, z_t], 1)) 
             posterior_gen.append(x[i])
@@ -214,7 +215,7 @@ def make_gifs(x, idx):
                 gifs[t].append(add_border(all_gen[sidx][t][i], color))
                 text[t].append('Random\nsample %d' % (s+1))
 
-        fname = '%s/%d.gif' % (opt.log_dir, idx+i) 
+        fname = '%s/%s_%d.gif' % (opt.log_dir, name, idx+i) 
         utils.save_gif_with_text(fname, gifs, text)
 
 def add_border(x, color, pad=1):
@@ -233,7 +234,12 @@ def add_border(x, color, pad=1):
     return px
 
 for i in range(0, opt.N, opt.batch_size):
-    x = next(testing_batch_generator)
-    make_gifs(x, i)
+    # plot train
+    train_x = next(training_batch_generator)
+    make_gifs(train_x, i, 'train')
+
+    # plot test
+    test_x = next(testing_batch_generator)
+    make_gifs(test_x, i, 'test')
     print(i)
 
