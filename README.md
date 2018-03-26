@@ -25,5 +25,5 @@ python train_svg_lp.py --dataset bair --model vgg --g_dim 128 --z_dim 64 --beta 
 
 To generate images with a pretrained SVG-LP model run:
 ```
-python generate_svg_lp.py --model_path pretrain_models/svglp_bair.pth --log_dir /generated/images/will/save/here/
+python generate_svg_lp.py --model_path pretrained_models/svglp_bair.pth --log_dir /generated/images/will/save/here/
 ```

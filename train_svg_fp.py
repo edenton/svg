@@ -30,7 +30,7 @@ parser.add_argument('--n_past', type=int, default=5, help='number of frames to c
 parser.add_argument('--n_future', type=int, default=10, help='number of frames to predict')
 parser.add_argument('--n_eval', type=int, default=30, help='number of frames to predict at eval time')
 parser.add_argument('--rnn_size', type=int, default=256, help='dimensionality of hidden layer')
-parser.add_argument('--posterior_rnn_layers', type=int, default=2, help='number of layers')
+parser.add_argument('--posterior_rnn_layers', type=int, default=1, help='number of layers')
 parser.add_argument('--predictor_rnn_layers', type=int, default=2, help='number of layers')
 parser.add_argument('--z_dim', type=int, default=10, help='dimensionality of z_t')
 parser.add_argument('--g_dim', type=int, default=128, help='dimensionality of encoder output vector and decoder input vector')
@@ -59,7 +59,6 @@ else:
 
 os.makedirs('%s/gen/' % opt.log_dir, exist_ok=True)
 os.makedirs('%s/plots/' % opt.log_dir, exist_ok=True)
-opt.max_step = opt.n_past+opt.n_future
 
 print("Random Seed: ", opt.seed)
 random.seed(opt.seed)
@@ -167,20 +166,20 @@ testing_batch_generator = get_testing_batch()
 
 # --------- plotting funtions ------------------------------------
 def plot(x, epoch):
-    nsample = 20 
+    nsample = 5 
     gen_seq = [[] for i in range(nsample)]
     gt_seq = [x[i] for i in range(len(x))]
 
+    h_seq = [encoder(x[i]) for i in range(opt.n_eval)]
     for s in range(nsample):
         frame_predictor.hidden = frame_predictor.init_hidden()
         gen_seq[s].append(x[0])
         x_in = x[0]
         for i in range(1, opt.n_eval):
-            h = encoder(x_in)
             if opt.last_frame_skip or i < opt.n_past:	
-                h, skip = h
+                h, skip = h_seq[i-1]
             else:
-                h, _ = h
+                h, _ = h_seq[i-1]
             h = h.detach()
             z_t = torch.cuda.FloatTensor(opt.batch_size, opt.z_dim).normal_()
             if i < opt.n_past:
@@ -202,23 +201,7 @@ def plot(x, epoch):
             row.append(gt_seq[t][i])
         to_plot.append(row)
 
-        # best sequence
-        min_mse = 1e7
         for s in range(nsample):
-            mse = 0
-            for t in range(opt.n_eval):
-                mse +=  torch.sum( (gt_seq[t][i].data.cpu() - gen_seq[s][t][i].data.cpu())**2 )
-            if mse < min_mse:
-                min_mse = mse
-                min_idx = s
-
-        s_list = [min_idx, 
-                  np.random.randint(nsample), 
-                  np.random.randint(nsample), 
-                  np.random.randint(nsample), 
-                  np.random.randint(nsample)]
-        for ss in range(len(s_list)):
-            s = s_list[ss]
             row = []
             for t in range(opt.n_eval):
                 row.append(gen_seq[s][t][i]) 
@@ -226,8 +209,7 @@ def plot(x, epoch):
         for t in range(opt.n_eval):
             row = []
             row.append(gt_seq[t][i])
-            for ss in range(len(s_list)):
-                s = s_list[ss]
+            for s in range(nsample):
                 row.append(gen_seq[s][t][i])
             gifs[t].append(row)
 
@@ -244,22 +226,20 @@ def plot_rec(x, epoch):
     gen_seq = []
     gen_seq.append(x[0])
     x_in = x[0]
+    h_seq = [encoder(x[i]) for i in range(opt.n_past+opt.n_future)]
     for i in range(1, opt.n_past+opt.n_future):
-        h = encoder(x[i-1])
-        h_target = encoder(x[i])
+        h_target = h_seq[i][0].detach()
         if opt.last_frame_skip or i < opt.n_past:	
-            h, skip = h
+            h, skip = h_seq[i-1]
         else:
-            h, _ = h
-        h_target, _ = h_target
+            h, _ = h_seq[i-1]
         h = h.detach()
-        h_target = h_target.detach()
         z_t, mu, logvar = posterior(h_target)
         if i < opt.n_past:
             frame_predictor(torch.cat([h, z_t], 1)) 
             gen_seq.append(x[i])
         else:
-            h_pred = frame_predictor(torch.cat([h, z_t], 1))
+            h_pred = frame_predictor(torch.cat([h, z_t], 1)).detach()
             x_pred = decoder([h_pred, skip]).detach()
             gen_seq.append(x_pred)
    
@@ -285,15 +265,15 @@ def train(x):
     frame_predictor.hidden = frame_predictor.init_hidden()
     posterior.hidden = posterior.init_hidden()
 
+    h_seq = [encoder(x[i]) for i in range(opt.n_past+opt.n_future)]
     mse = 0
     kld = 0
     for i in range(1, opt.n_past+opt.n_future):
-        h = encoder(x[i-1])
-        h_target = encoder(x[i])[0]
+        h_target = h_seq[i][0]
         if opt.last_frame_skip or i < opt.n_past:	
-            h, skip = h
+            h, skip = h_seq[i-1]
         else:
-            h = h[0]
+            h = h_seq[i-1][0]
         z_t, mu, logvar = posterior(h_target)
         h_pred = frame_predictor(torch.cat([h, z_t], 1))
         x_pred = decoder([h_pred, skip])

@@ -30,8 +30,8 @@ parser.add_argument('--n_past', type=int, default=5, help='number of frames to c
 parser.add_argument('--n_future', type=int, default=10, help='number of frames to predict during training')
 parser.add_argument('--n_eval', type=int, default=30, help='number of frames to predict during eval')
 parser.add_argument('--rnn_size', type=int, default=256, help='dimensionality of hidden layer')
-parser.add_argument('--prior_rnn_layers', type=int, default=2, help='number of layers')
-parser.add_argument('--posterior_rnn_layers', type=int, default=2, help='number of layers')
+parser.add_argument('--prior_rnn_layers', type=int, default=1, help='number of layers')
+parser.add_argument('--posterior_rnn_layers', type=int, default=1, help='number of layers')
 parser.add_argument('--predictor_rnn_layers', type=int, default=2, help='number of layers')
 parser.add_argument('--z_dim', type=int, default=10, help='dimensionality of z_t')
 parser.add_argument('--g_dim', type=int, default=128, help='dimensionality of encoder output vector and decoder input vector')
@@ -62,7 +62,6 @@ else:
 
 os.makedirs('%s/gen/' % opt.log_dir, exist_ok=True)
 os.makedirs('%s/plots/' % opt.log_dir, exist_ok=True)
-opt.max_step = opt.n_past+opt.n_future
 
 print("Random Seed: ", opt.seed)
 random.seed(opt.seed)

@@ -30,7 +30,7 @@ def load_dataset(opt):
         train_data = MovingMNIST(
                 train=True,
                 data_root=opt.data_root,
-                seq_len=opt.max_step,
+                seq_len=opt.n_past+opt.n_future,
                 image_size=opt.image_width,
                 deterministic=False,
                 num_digits=opt.num_digits)
@@ -46,12 +46,24 @@ def load_dataset(opt):
         train_data = RobotPush(
                 data_root=opt.data_root,
                 train=True,
-                seq_len=opt.max_step,
+                seq_len=opt.n_past+opt.n_future,
                 image_size=opt.image_width)
         test_data = RobotPush(
                 data_root=opt.data_root,
                 train=False,
                 seq_len=opt.n_eval,
+                image_size=opt.image_width)
+    elif opt.dataset == 'kth':
+        from data.kth import KTH 
+        train_data = KTH(
+                train=True, 
+                data_root=opt.data_root,
+                seq_len=opt.n_past+opt.n_future, 
+                image_size=opt.image_width)
+        test_data = KTH(
+                train=False, 
+                data_root=opt.data_root,
+                seq_len=opt.n_eval, 
                 image_size=opt.image_width)
     
     return train_data, test_data
