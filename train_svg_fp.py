@@ -170,7 +170,7 @@ def plot(x, epoch):
     gen_seq = [[] for i in range(nsample)]
     gt_seq = [x[i] for i in range(len(x))]
 
-    h_seq = [encoder(x[i]) for i in range(opt.n_eval)]
+    h_seq = [encoder(x[i]) for i in range(opt.n_past)]
     for s in range(nsample):
         frame_predictor.hidden = frame_predictor.init_hidden()
         gen_seq[s].append(x[0])
@@ -178,15 +178,17 @@ def plot(x, epoch):
         for i in range(1, opt.n_eval):
             if opt.last_frame_skip or i < opt.n_past:	
                 h, skip = h_seq[i-1]
-            else:
+                h = h.detach()
+            elif i < opt.n_past:
                 h, _ = h_seq[i-1]
-            h = h.detach()
-            z_t = torch.cuda.FloatTensor(opt.batch_size, opt.z_dim).normal_()
+                h = h.detach()
             if i < opt.n_past:
+                z_t, _, _ = posterior(h_seq[i][0])
                 frame_predictor(torch.cat([h, z_t], 1)) 
                 x_in = x[i]
                 gen_seq[s].append(x_in)
             else:
+                z_t = torch.cuda.FloatTensor(opt.batch_size, opt.z_dim).normal_()
                 h = frame_predictor(torch.cat([h, z_t], 1)).detach()
                 x_in = decoder([h, skip]).detach()
                 gen_seq[s].append(x_in)

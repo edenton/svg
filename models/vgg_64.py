@@ -103,4 +103,3 @@ class decoder(nn.Module):
         up4 = self.up(d4) # 32 -> 64
         output = self.upc5(torch.cat([up4, skip[0]], 1)) # 64 x 64
         return output
-
