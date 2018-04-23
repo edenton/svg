@@ -198,6 +198,7 @@ def plot(x, epoch):
                 h_target = encoder(x[i])
                 h_target = h_target[0].detach()
                 z_t, _, _ = posterior(h_target)
+                prior(h)
                 frame_predictor(torch.cat([h, z_t], 1))
                 x_in = x[i]
                 gen_seq[s].append(x_in)
@@ -357,8 +358,8 @@ for epoch in range(opt.niter):
 
     # plot some stuff
     frame_predictor.eval()
-    encoder.eval()
-    decoder.eval()
+    #encoder.eval()
+    #decoder.eval()
     posterior.eval()
     prior.eval()
     

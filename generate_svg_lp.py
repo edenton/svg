@@ -49,8 +49,8 @@ prior.eval()
 posterior.eval()
 encoder = tmp['encoder']
 decoder = tmp['decoder']
-encoder.eval()
-decoder.eval()
+encoder.train()
+decoder.train()
 frame_predictor.batch_size = opt.batch_size
 posterior.batch_size = opt.batch_size
 prior.batch_size = opt.batch_size
@@ -155,16 +155,15 @@ def make_gifs(x, idx, name):
             else:
                 h, _ = h
             h = h.detach()
-            if i + 1 < opt.n_past:
+            if i < opt.n_past:
                 h_target = encoder(x[i])[0].detach()
                 z_t, _, _ = posterior(h_target)
-            else:
-                z_t, _, _ = prior(h)
-            if i < opt.n_past:
+                prior(h)
                 frame_predictor(torch.cat([h, z_t], 1))
                 x_in = x[i]
                 all_gen[s].append(x_in)
             else:
+                z_t, _, _ = prior(h)
                 h = frame_predictor(torch.cat([h, z_t], 1)).detach()
                 x_in = decoder([h, skip]).detach()
                 gen_seq.append(x_in.data.cpu().numpy())
