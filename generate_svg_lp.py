@@ -14,6 +14,7 @@ from scipy.ndimage.filters import gaussian_filter
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', default=100, type=int, help='batch size')
+parser.add_argument('--data_root', default='data', help='root directory for data')
 parser.add_argument('--model_path', default='', help='path to model')
 parser.add_argument('--log_dir', default='', help='directory to save generations to')
 parser.add_argument('--seed', default=1, type=int, help='manual seed')
@@ -67,7 +68,6 @@ decoder.cuda()
 
 # ---------------- set the options ----------------
 opt.dataset = tmp['opt'].dataset
-opt.data_root = tmp['opt'].data_root
 opt.last_frame_skip = tmp['opt'].last_frame_skip
 opt.channels = tmp['opt'].channels
 opt.image_width = tmp['opt'].image_width
@@ -180,6 +180,7 @@ def make_gifs(x, idx, name):
         text = [ [] for t in range(opt.n_eval) ]
         mean_ssim = np.mean(ssim[i], 1)
         ordered = np.argsort(mean_ssim)
+        rand_sidx = [np.random.randint(nsample) for s in range(3)]
         for t in range(opt.n_eval):
             # gt 
             gifs[t].append(add_border(x[t][i], 'green'))
@@ -200,9 +201,8 @@ def make_gifs(x, idx, name):
             gifs[t].append(add_border(all_gen[sidx][t][i], color))
             text[t].append('Best SSIM')
             # random 3
-            for s in range(3):
-                sidx = np.random.randint(nsample)
-                gifs[t].append(add_border(all_gen[sidx][t][i], color))
+            for s in range(len(rand_sidx)):
+                gifs[t].append(add_border(all_gen[rand_sidx[s]][t][i], color))
                 text[t].append('Random\nsample %d' % (s+1))
 
         fname = '%s/%s_%d.gif' % (opt.log_dir, name, idx+i) 
