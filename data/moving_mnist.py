@@ -22,7 +22,7 @@ class MovingMNIST(object):
             train=train,
             download=True,
             transform=transforms.Compose(
-                [transforms.Scale(self.digit_size),
+                [transforms.Resize(self.digit_size),
                  transforms.ToTensor()]))
 
         self.N = len(self.data) 
