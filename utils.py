@@ -148,7 +148,8 @@ def make_image(tensor):
     if tensor.size(0) == 1:
         tensor = tensor.expand(3, tensor.size(1), tensor.size(2))
     # pdb.set_trace()
-    return scipy.misc.toimage(tensor.numpy(),
+    tensor = tensor.detach().numpy()
+    return scipy.misc.toimage(tensor,
                               high=255*tensor.max(),
                               channel_axis=0)
 
