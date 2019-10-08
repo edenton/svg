@@ -1,0 +1,13 @@
+name: svg-env
+dependencies:
+- python
+- pytorch<1.0.1 # (torch.utils.serialization.load_lua) https://github.com/pytorch/pytorch/issues/15307
+- progressbar2
+- scikit-learn
+- matplotlib
+- scikit-image
+- torchvision
+- scipy<1.3.0 # (scipy.misc.imresize) https://docs.scipy.org/doc/scipy-1.2.1/reference/generated/scipy.misc.imresize.html
+- lua
+- ffmpeg
+- tensorflow
