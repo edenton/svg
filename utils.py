@@ -24,7 +24,25 @@ import imageio
 
 hostname = socket.gethostname()
 
+
+def torch_tensor_to_img(tensor):
+    image_array = tensor.numpy()
+    image_array -= np.min(image_array)
+    image_array = np.minimum(image_array, 1.0)
+    print(image_array.shape)
+    image_array = np.transpose(image_array, (1, 2, 0))
+    img = None
+    if image_array.shape[2] == 3:  # 3-channel image
+        # array is grayscale, but we convert to RGB
+        img = Image.fromarray((image_array * 255).astype('uint8'), mode='RGB')
+    else:
+        img = Image.fromarray((image_array * 255).astype('uint8'), mode='L').convert('RGB')
+    return img
+
+
 def load_dataset(opt):
+    train_data = None
+    test_data = None
     if opt.dataset == 'smmnist':
         from data.moving_mnist import MovingMNIST
         train_data = MovingMNIST(
@@ -65,6 +83,20 @@ def load_dataset(opt):
                 data_root=opt.data_root,
                 seq_len=opt.n_eval, 
                 image_size=opt.image_width)
+    elif opt.dataset == 'mcs':
+        from data.mcs import MCS
+        train_data = MCS(
+                train=True,
+                data_root=opt.data_root,
+                seq_len=opt.n_past+opt.n_future,
+                image_size=opt.image_width,
+                task=opt.mcs_task)
+        test_data = MCS(
+                train=False,
+                data_root=opt.data_root,
+                seq_len=opt.n_eval,
+                image_size=opt.image_width,
+                task=opt.mcs_task)
     
     return train_data, test_data
 
@@ -72,7 +104,7 @@ def sequence_input(seq, dtype):
     return [Variable(x.type(dtype)) for x in seq]
 
 def normalize_data(opt, dtype, sequence):
-    if opt.dataset == 'smmnist' or opt.dataset == 'kth' or opt.dataset == 'bair' :
+    if opt.dataset == 'smmnist' or opt.dataset == 'kth' or opt.dataset == 'bair' or opt.dataset == 'mcs':
         sequence.transpose_(0, 1)
         sequence.transpose_(3, 4).transpose_(2, 3)
     else:
@@ -138,9 +170,7 @@ def image_tensor(inputs, padding=1):
 def save_np_img(fname, x):
     if x.shape[0] == 1:
         x = np.tile(x, (3, 1, 1))
-    img = scipy.misc.toimage(x,
-                             high=255*x.max(),
-                             channel_axis=0)
+    img = torch_tensor_to_img(x)
     img.save(fname)
 
 def make_image(tensor):
@@ -148,9 +178,7 @@ def make_image(tensor):
     if tensor.size(0) == 1:
         tensor = tensor.expand(3, tensor.size(1), tensor.size(2))
     # pdb.set_trace()
-    return scipy.misc.toimage(tensor.numpy(),
-                              high=255*tensor.max(),
-                              channel_axis=0)
+    return torch_tensor_to_img(tensor)
 
 def draw_text_tensor(tensor, text):
     np_x = tensor.transpose(0, 1).transpose(1, 2).data.cpu().numpy()
@@ -166,7 +194,7 @@ def save_gif(filename, inputs, duration=0.25):
         img = image_tensor(tensor, padding=0)
         img = img.cpu()
         img = img.transpose(0,1).transpose(1,2).clamp(0,1)
-        images.append(img.numpy())
+        images.append((img.numpy()*255).astype(np.uint8))
     imageio.mimsave(filename, images, duration=duration)
 
 def save_gif_with_text(filename, inputs, text, duration=0.25):
