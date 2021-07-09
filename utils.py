@@ -40,7 +40,7 @@ def torch_tensor_to_img(tensor):
     return img
 
 
-def load_dataset(opt):
+def load_dataset(opt, sequential=None):
     train_data = None
     test_data = None
     if opt.dataset == 'smmnist':
@@ -90,13 +90,15 @@ def load_dataset(opt):
                 data_root=opt.data_root,
                 seq_len=opt.n_past+opt.n_future,
                 image_size=opt.image_width,
-                task=opt.mcs_task)
+                task=opt.mcs_task,
+                sequential=sequential)
         test_data = MCS(
                 train=False,
                 data_root=opt.data_root,
                 seq_len=opt.n_eval,
                 image_size=opt.image_width,
-                task=opt.mcs_task)
+                task=opt.mcs_task,
+                sequential=sequential)
     
     return train_data, test_data
 
