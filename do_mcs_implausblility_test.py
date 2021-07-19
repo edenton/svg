@@ -1,5 +1,6 @@
 import glob
 
+import cv2
 import torch
 import torch.optim as optim
 import torch.nn as nn
@@ -71,24 +72,13 @@ torch.manual_seed(opt.seed)
 torch.cuda.manual_seed_all(opt.seed)
 dtype = torch.cuda.FloatTensor
 
-# ---------------- optimizers ----------------
-if opt.optimizer == 'adam':
-    opt.optimizer = optim.Adam
-elif opt.optimizer == 'rmsprop':
-    opt.optimizer = optim.RMSprop
-elif opt.optimizer == 'sgd':
-    opt.optimizer = optim.SGD
-else:
-    raise ValueError('Unknown optimizer: %s' % opt.optimizer)
-
 import models.lstm as lstm_models
 
 if opt.model_dir != '':
     frame_predictor = saved_model['frame_predictor']
     frame_predictor.batch_size = BATCH_SIZE
 else:
-    frame_predictor = lstm_models.lstm(opt.g_dim, opt.g_dim, opt.rnn_size, opt.predictor_rnn_layers, opt.batch_size)
-    frame_predictor.apply(utils.init_weights)
+    raise ValueError('Please specify --model_dir')
 
 if opt.model == 'dcgan':
     if opt.image_width == 64:
@@ -135,13 +125,13 @@ opt.n_future = 195
 print(opt)
 
 # --------- load a dataset ------------------------------------
-train_data, test_data = utils.load_dataset(opt, sequential=True)
+train_data, test_data = utils.load_dataset(opt, sequential=True, implausible=True)
 
 train_loader = DataLoader(train_data,
                           num_workers=opt.data_threads,
                           batch_size=opt.batch_size,
                           drop_last=True,
-                          pin_memory=True)
+                          pin_memory=True,)
 test_loader = DataLoader(test_data,
                          num_workers=opt.data_threads,
                          batch_size=opt.batch_size,
@@ -259,62 +249,23 @@ def plot_rec(x, epoch):
     utils.save_tensors_image(fname, to_plot)
 
 
-def do_stats():
-    epoch_size = 1000 // opt.batch_size // 4  # we have a total of 1000 videos
+def do_implasubility_test(h_residual_mean, h_residual_vars):
+    epoch_size = 1000 // opt.batch_size  # we have a total of 1000 videos
+    cov_inv = [np.diag(1.0 / h_var)[np.newaxis, ...] for h_var in h_residual_vars] # we assume the covariance matrix is diagonal and do the inverse for each time
 
     frame_predictor.eval()
     encoder.eval()
     decoder.eval()
     progress = progressbar.ProgressBar(max_value=epoch_size).start()
-    h_residual_mean = torch.tensor(np.zeros((opt.n_future, 128), dtype=np.float32), requires_grad=False,
-                                   device=torch.device('cuda:0'))
-    i = 0
+
+
     for i in range(epoch_size):
+        h_residual_var = torch.tensor(np.zeros(opt.n_future, dtype=np.float32), requires_grad=False,
+                                      device=torch.device('cpu'))
         progress.update(i + 1)
         try:
             x = next(training_batch_generator)
-        except TypeError:
-            print('got None at i = {}, terminating'.format(i))
-            break
-        h_posterior = [encoder(x[j]) for j in range(opt.n_past + opt.n_future)]
-        # print(h_posterior[0][0].size())
-        last_pred = None
-        frame_predictor.hidden = frame_predictor.init_hidden()
-        for j in range(1, opt.n_past + opt.n_future):
-            if opt.last_frame_skip or j < opt.n_past:
-                h, skip = h_posterior[j - 1]
-            else:
-                h = h_posterior[j - 1][0].detach()
-            # we predict h_t from h_{t-1}
-            h_prior_pred = frame_predictor(torch.cat([h], 1)).detach()
-
-            if j >= opt.n_past:
-                # h_res = h_prior_pred - h_posterior[j][0].detach()  # predicted h minus observed h
-                # h_res = h_prior_pred
-                # h_res = torch.mean(h_res, dim=0)  # average errors at the same time j over the batch
-                # h_residual_mean[j - opt.n_past] += h_res
-                this_minus_last_pred = h_prior_pred - last_pred
-                this_minus_last_pred = torch.mean(this_minus_last_pred, dim=0)
-                h_residual_mean[j - opt.n_past] += this_minus_last_pred
-            last_pred = h_prior_pred
-    h_residual_mean /= epoch_size  # get the mean error vector per time
-
-    # restart training dataset
-    global train_loader
-    train_loader = DataLoader(train_data,
-                              num_workers=opt.data_threads,
-                              batch_size=opt.batch_size,
-                              drop_last=True,
-                              pin_memory=True)
-    h_residual_var = torch.tensor(np.zeros(opt.n_future, dtype=np.float32), requires_grad=False,
-                                  device=torch.device('cuda:0'))
-    h_residual_vars = torch.tensor(np.zeros((opt.n_future, 128), dtype=np.float32), requires_grad=False,
-                                  device=torch.device('cuda:0'))
-
-    for i in range(epoch_size):
-        progress.update(i + 1)
-        try:
-            x = next(training_batch_generator_2)
+            frames = [frame.cpu() for frame in x]
         except TypeError:
             print('got None at i = {}, terminating'.format(i))
             break
@@ -337,21 +288,77 @@ def do_stats():
                 # squared_diff = torch.mean(squared_diff, dim=0)  # average squared residuals at time j over the batch
                 # h_residual_var[j - opt.n_past] += squared_diff
 
-                this_minus_last_pred = h_prior_pred - last_pred
-                squared_err = torch.square(this_minus_last_pred - h_residual_mean[j - opt.n_past])
-                squared_err = torch.mean(squared_err, dim=0)  # average errs at time j over the batch
-                h_residual_vars[j - opt.n_past] += squared_err.detach()
-                squared_err = torch.mean(squared_err, dim=0)  # average errs at time j over the dimensions of h
-                h_residual_var[j - opt.n_past] += squared_err.detach()
+                residual = (h_prior_pred - last_pred).cpu()
+                # err = (residual - h_residual_mean[j - opt.n_past])
+                err = residual
+                err = np.square(err)  # [batch, dim_feature]
+                err = err / h_residual_vars[j - opt.n_past][np.newaxis, ...]  # [batch, dim_feature] / [1, dim_feature]
+                err = torch.sum(err, axis=1)  # -> [batch,]
+                # if len(err.shape) == 2:  # [batch, dim_feature]
+                #     err = err[..., np.newaxis]  # make err into a vector [batch, dim_feature, 1]
+                # # print(cov_inv[j - opt.n_past].shape)
+                # # print(cov_inv[j - opt.n_past])
+                # # print(err.shape)
+                # print(err)
+                # print(np.diag(cov_inv[j - opt.n_past][0]))
+                # quit()
+                # mahanlanobis_dist = np.matmul(cov_inv[j - opt.n_past], err).transpose(2, 1)
+                # # print(mahanlanobis_dist.shape)
+                # mahanlanobis_dist = np.matmul(mahanlanobis_dist, err)  # [batch, 1, 1]
+                # # print(mahanlanobis_dist.shape)
+                # # print(np.sqrt(mahanlanobis_dist))
+                # print(mahanlanobis_dist)
+                # quit()
+                # mahanlanobis_dist = torch.mean(mahanlanobis_dist)  # scalar
+
+
+                # err = torch.mean(err, dim=1)  # average errs at time j over the dimensions of h
+                # err = torch.mean(err, dim=0)  # average errs at time j over the batch
+                # h_residual_var[j - opt.n_past] += err.detach()
+                h_residual_var[j - opt.n_past] += torch.mean(err, axis=0)
             last_pred = h_prior_pred.detach()
-    h_residual_var /= epoch_size  # get the mean error vector per time
-    h_residual_vars /= epoch_size
-    h_residual_sd = torch.sqrt(h_residual_var)
+
+        h_residual_sd = torch.sqrt(h_residual_var).cpu()
+
+        h_residual_sd_filtered = - h_residual_sd[:-2] + 2 * h_residual_sd[1:-1] - h_residual_sd[2:]
+
+
+        print(h_residual_var)
+        for j in range(len(frames)):
+            frame = np.uint8(np.minimum(frames[j][0][0], 1) * 255)
+            cv2.imshow('frame', frame)
+            cv2.waitKey(10)
+        fig = plt.figure()
+        # plt.ylim(0, 10.0)
+        plt.xlabel('Time')
+        plt.title("sqrt of average squared dimensional error")
+        plt.bar(np.arange(len(h_residual_sd)), h_residual_sd)
+        fig.canvas.draw()
+        img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8,
+                            sep='')
+        img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+        plt.xlabel('Time')
+        plt.title("filtered sqrt of average squared dimensional error")
+        plt.bar(np.arange(len(h_residual_sd_filtered)), h_residual_sd_filtered)
+        fig.canvas.draw()
+        img2 = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8,
+                            sep='')
+        img2 = img2.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        img2 = cv2.cvtColor(img2, cv2.COLOR_RGB2BGR)
+
+        cv2.imshow("plot", img)
+        cv2.imshow("plot2", img2)
+
+        k = cv2.waitKey(0)
+        if k == ord('q'):
+            quit()
+        # plt.savefig('implausibility_test.png')
+    # h_residual_var /= epoch_size  # get the mean error vector per time
+    # h_residual_sd = torch.sqrt(h_residual_var)
     print('Last i = {}'.format(i))
-    print('sd of h residual: ', h_residual_sd)
-    print('var of h residual: ', h_residual_var)
-    print('norm(mean of h residual)', torch.norm(h_residual_mean, dim=1))
-    print('vars of h residual: ', h_residual_vars)
+
 
     # H_err_cov = torch.tensor(np.zeros((opt.n_future, 128, 128), dtype=np.float32), requires_grad=False,
     #                          device=torch.device('cuda:0'))
@@ -369,12 +376,9 @@ def do_stats():
     plt.tight_layout()
     plt.title("Average dimensional sqrt(variance) of the residual")
     plt.bar(np.arange(len(h_residual_sd.cpu())), h_residual_sd.cpu())
-    plt.savefig('h_residual_mean_1.png')
-
-    stats_dict = {'mean': h_residual_mean.cpu().tolist(), 'var': h_residual_var.cpu().tolist(),
-                  'vars': h_residual_vars.cpu().tolist()}
-    f = open('mcs_stats.json', 'w')
-    json.dump(stats_dict, f)
+    plt.savefig('h_residual_mean.png')
 
 
-do_stats()
+f = open('mcs_stats.json', 'r')
+mcs_stats_dict = json.load(f)
+do_implasubility_test(np.array(mcs_stats_dict['mean']), np.array(mcs_stats_dict['vars']))

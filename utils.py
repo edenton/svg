@@ -29,7 +29,7 @@ def torch_tensor_to_img(tensor):
     image_array = tensor.numpy()
     image_array -= np.min(image_array)
     image_array = np.minimum(image_array, 1.0)
-    print(image_array.shape)
+    # print(image_array.shape)
     image_array = np.transpose(image_array, (1, 2, 0))
     img = None
     if image_array.shape[2] == 3:  # 3-channel image
@@ -40,7 +40,7 @@ def torch_tensor_to_img(tensor):
     return img
 
 
-def load_dataset(opt, sequential=None):
+def load_dataset(opt, sequential=None, implausible=None):
     train_data = None
     test_data = None
     if opt.dataset == 'smmnist':
@@ -91,14 +91,16 @@ def load_dataset(opt, sequential=None):
                 seq_len=opt.n_past+opt.n_future,
                 image_size=opt.image_width,
                 task=opt.mcs_task,
-                sequential=sequential)
+                sequential=sequential,
+                implausible=implausible)
         test_data = MCS(
                 train=False,
                 data_root=opt.data_root,
                 seq_len=opt.n_eval,
                 image_size=opt.image_width,
                 task=opt.mcs_task,
-                sequential=sequential)
+                sequential=sequential,
+                implausible=implausible)
     
     return train_data, test_data
 

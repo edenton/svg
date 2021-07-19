@@ -54,12 +54,10 @@ if opt.model_dir != '':
     latest_model = sorted(models, key=lambda s: int(s[s.rfind('_e') + 2: s.rfind('.pth')]), reverse=True)[0]
     print('Loading model ', latest_model)
     saved_model = torch.load(latest_model)
-    optimizer = opt.optimizer
     model_dir = opt.model_dir
     niter = opt.niter
     opt = saved_model['opt']
     opt.niter = niter  # update number of epochs to train for
-    opt.optimizer = optimizer
     opt.model_dir = model_dir
     opt.log_dir = '%s/continued' % opt.log_dir
 else:
@@ -71,21 +69,14 @@ torch.manual_seed(opt.seed)
 torch.cuda.manual_seed_all(opt.seed)
 dtype = torch.cuda.FloatTensor
 
-# ---------------- optimizers ----------------
-if opt.optimizer == 'adam':
-    opt.optimizer = optim.Adam
-elif opt.optimizer == 'rmsprop':
-    opt.optimizer = optim.RMSprop
-elif opt.optimizer == 'sgd':
-    opt.optimizer = optim.SGD
-else:
-    raise ValueError('Unknown optimizer: %s' % opt.optimizer)
 
 import models.lstm as lstm_models
 
 if opt.model_dir != '':
     frame_predictor = saved_model['frame_predictor']
     frame_predictor.batch_size = BATCH_SIZE
+    posterior = saved_model['posterior']
+    posterior.batch_size = BATCH_SIZE
 else:
     frame_predictor = lstm_models.lstm(opt.g_dim, opt.g_dim, opt.rnn_size, opt.predictor_rnn_layers, opt.batch_size)
     frame_predictor.apply(utils.init_weights)
@@ -180,6 +171,7 @@ def plot(x, epoch):
     h_seq = [encoder(x[i]) for i in range(opt.n_past)]
     for s in range(nsample):
         frame_predictor.hidden = frame_predictor.init_hidden()
+        posterior.hidden = posterior.init_hidden()
         gen_seq[s].append(x[0])
         x_in = x[0]
         for i in range(1, opt.n_eval):
@@ -229,6 +221,7 @@ def plot(x, epoch):
 
 def plot_rec(x, epoch):
     frame_predictor.hidden = frame_predictor.init_hidden()
+    posterior.hidden = posterior.init_hidden()
     gen_seq = []
     gen_seq.append(x[0])
     x_in = x[0]
@@ -260,7 +253,7 @@ def plot_rec(x, epoch):
 
 
 def do_stats():
-    epoch_size = 1000 // opt.batch_size // 4  # we have a total of 1000 videos
+    epoch_size = 1000 // opt.batch_size // 1  # we have a total of 1000 videos
 
     frame_predictor.eval()
     encoder.eval()
@@ -280,23 +273,25 @@ def do_stats():
         # print(h_posterior[0][0].size())
         last_pred = None
         frame_predictor.hidden = frame_predictor.init_hidden()
+        posterior.hidden = posterior.init_hidden()
         for j in range(1, opt.n_past + opt.n_future):
+            h_target = h_posterior[j][0].detach()
             if opt.last_frame_skip or j < opt.n_past:
                 h, skip = h_posterior[j - 1]
             else:
                 h = h_posterior[j - 1][0].detach()
             # we predict h_t from h_{t-1}
-            h_prior_pred = frame_predictor(torch.cat([h], 1)).detach()
+            h_prior_pred = frame_predictor(h).detach()
+            h_posterior_pred = posterior(h_target).detach()
 
             if j >= opt.n_past:
                 # h_res = h_prior_pred - h_posterior[j][0].detach()  # predicted h minus observed h
                 # h_res = h_prior_pred
                 # h_res = torch.mean(h_res, dim=0)  # average errors at the same time j over the batch
                 # h_residual_mean[j - opt.n_past] += h_res
-                this_minus_last_pred = h_prior_pred - last_pred
-                this_minus_last_pred = torch.mean(this_minus_last_pred, dim=0)
-                h_residual_mean[j - opt.n_past] += this_minus_last_pred
-            last_pred = h_prior_pred
+                residual = h_prior_pred - h_posterior_pred
+                residual = torch.mean(residual, dim=0)
+                h_residual_mean[j - opt.n_past] += residual
     h_residual_mean /= epoch_size  # get the mean error vector per time
 
     # restart training dataset
@@ -320,15 +315,17 @@ def do_stats():
             break
         h_posterior = [encoder(x[j]) for j in range(opt.n_past + opt.n_future)]
         # print(h_posterior[0][0].size())
-        last_pred = None
         frame_predictor.hidden = frame_predictor.init_hidden()
+        posterior.hidden = posterior.init_hidden()
         for j in range(1, opt.n_past + opt.n_future):
+            h_target = h_posterior[j][0].detach()
             if opt.last_frame_skip or j < opt.n_past:
                 h, skip = h_posterior[j - 1]
             else:
                 h = h_posterior[j - 1][0].detach()
             # we predict h_t from h_{t-1}
-            h_prior_pred = frame_predictor(torch.cat([h], 1)).detach()
+            h_prior_pred = frame_predictor(h).detach()
+            h_posterior_pred = posterior(h_target).detach()
 
             if j >= opt.n_past:
                 # h_res = h_prior_pred - h_posterior[j][0].detach()  # predicted h minus observed h
@@ -337,14 +334,14 @@ def do_stats():
                 # squared_diff = torch.mean(squared_diff, dim=0)  # average squared residuals at time j over the batch
                 # h_residual_var[j - opt.n_past] += squared_diff
 
-                this_minus_last_pred = h_prior_pred - last_pred
-                squared_err = torch.square(this_minus_last_pred - h_residual_mean[j - opt.n_past])
+                residual = h_prior_pred - h_posterior_pred
+                squared_err = torch.square(residual - h_residual_mean[j - opt.n_past])
+                # squared_err = torch.square(residual)
                 squared_err = torch.mean(squared_err, dim=0)  # average errs at time j over the batch
                 h_residual_vars[j - opt.n_past] += squared_err.detach()
                 squared_err = torch.mean(squared_err, dim=0)  # average errs at time j over the dimensions of h
                 h_residual_var[j - opt.n_past] += squared_err.detach()
-            last_pred = h_prior_pred.detach()
-    h_residual_var /= epoch_size  # get the mean error vector per time
+    h_residual_var /= epoch_size
     h_residual_vars /= epoch_size
     h_residual_sd = torch.sqrt(h_residual_var)
     print('Last i = {}'.format(i))
@@ -369,11 +366,11 @@ def do_stats():
     plt.tight_layout()
     plt.title("Average dimensional sqrt(variance) of the residual")
     plt.bar(np.arange(len(h_residual_sd.cpu())), h_residual_sd.cpu())
-    plt.savefig('h_residual_mean_1.png')
+    plt.savefig('post_h_residual.png')
 
     stats_dict = {'mean': h_residual_mean.cpu().tolist(), 'var': h_residual_var.cpu().tolist(),
                   'vars': h_residual_vars.cpu().tolist()}
-    f = open('mcs_stats.json', 'w')
+    f = open('mcs_stats_post.json', 'w')
     json.dump(stats_dict, f)
 
 
