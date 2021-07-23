@@ -24,6 +24,14 @@ import imageio
 
 hostname = socket.gethostname()
 
+RGB_weights = torch.tensor(np.array([0.299, 0.587, 0.114]), dtype=torch.float32, device=torch.device('cuda:0'))
+
+def torch_rgb_img_to_gray(tensor):
+    # in: Bx3xHxW  out: Bx1xHxW
+    tensor = torch.transpose(tensor, 1, 3)  # B x W x H x 3
+    tensor = torch.unsqueeze(torch.matmul(tensor, RGB_weights), -1)  # B x W x H x 1
+    tensor = torch.transpose(tensor, 3, 1)  # B x 1 x H x W
+    return tensor
 
 def torch_tensor_to_img(tensor):
     image_array = tensor.numpy()
@@ -101,6 +109,26 @@ def load_dataset(opt, sequential=None, implausible=None):
                 task=opt.mcs_task,
                 sequential=sequential,
                 implausible=implausible)
+    elif opt.dataset == 'mcs_test':
+        from data.mcs import MCS
+        train_data = MCS(
+            train=True,
+            data_root=opt.data_root,
+            seq_len=opt.n_past + opt.n_future,
+            image_size=opt.image_width,
+            task=opt.mcs_task,
+            sequential=sequential,
+            implausible=implausible,
+            test_set=True)
+        test_data = MCS(
+            train=False,
+            data_root=opt.data_root,
+            seq_len=opt.n_eval,
+            image_size=opt.image_width,
+            task=opt.mcs_task,
+            sequential=sequential,
+            implausible=implausible,
+            test_set=True)
     
     return train_data, test_data
 

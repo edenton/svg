@@ -77,10 +77,9 @@ if opt.model_dir != '':
     frame_predictor.batch_size = BATCH_SIZE
     posterior = saved_model['posterior']
     posterior.batch_size = BATCH_SIZE
-    prior = saved_model['prior']
-    prior.batch_size = BATCH_SIZE
 else:
-    raise ValueError("Please specify the model to load with the --model_dir argument")
+    frame_predictor = lstm_models.lstm(opt.g_dim, opt.g_dim, opt.rnn_size, opt.predictor_rnn_layers, opt.batch_size)
+    frame_predictor.apply(utils.init_weights)
 
 if opt.model == 'dcgan':
     if opt.image_width == 64:
@@ -99,7 +98,10 @@ if opt.model_dir != '':
     decoder = saved_model['decoder']
     encoder = saved_model['encoder']
 else:
-    raise ValueError("Please specify the model to load with the --model_dir argument")
+    encoder = model.encoder(opt.g_dim, opt.channels)
+    decoder = model.decoder(opt.g_dim, opt.channels)
+    encoder.apply(utils.init_weights)
+    decoder.apply(utils.init_weights)
 
 # --------- loss functions ------------------------------------
 mse_criterion = nn.MSELoss()
@@ -254,12 +256,10 @@ def do_stats():
     epoch_size = 1000 // opt.batch_size // 1  # we have a total of 1000 videos
 
     frame_predictor.eval()
-    prior.eval()
-    posterior.eval()
     encoder.eval()
     decoder.eval()
     progress = progressbar.ProgressBar(max_value=epoch_size).start()
-    z_residual_mean = torch.tensor(np.zeros((opt.n_future, opt.z_dim), dtype=np.float64), requires_grad=False,
+    h_residual_mean = torch.tensor(np.zeros((opt.n_future, 128), dtype=np.float32), requires_grad=False,
                                    device=torch.device('cuda:0'))
     i = 0
     for i in range(epoch_size):
@@ -269,33 +269,30 @@ def do_stats():
         except TypeError:
             print('got None at i = {}, terminating'.format(i))
             break
+        h_posterior = [encoder(x[j]) for j in range(opt.n_past + opt.n_future)]
         # print(h_posterior[0][0].size())
+        last_pred = None
         frame_predictor.hidden = frame_predictor.init_hidden()
-        prior.hidden = prior.init_hidden()
         posterior.hidden = posterior.init_hidden()
-
-        last_h = encoder(x[0])
         for j in range(1, opt.n_past + opt.n_future):
-            h_target = encoder(x[j])
+            h_target = h_posterior[j][0].detach()
             if opt.last_frame_skip or j < opt.n_past:
-                h, skip = last_h
-                h = h.detach()
+                h, skip = h_posterior[j - 1]
             else:
-                h = last_h[0].detach()
+                h = h_posterior[j - 1][0].detach()
             # we predict h_t from h_{t-1}
-            z_t = posterior(h_target[0].detach()).detach()
-            z_t_hat = prior(h).detach()
+            h_prior_pred = frame_predictor(h).detach()
+            h_posterior_pred = posterior(h_target).detach()
 
             if j >= opt.n_past:
                 # h_res = h_prior_pred - h_posterior[j][0].detach()  # predicted h minus observed h
                 # h_res = h_prior_pred
                 # h_res = torch.mean(h_res, dim=0)  # average errors at the same time j over the batch
-                # z_residual_mean[j - opt.n_past] += h_res
-                residual = z_t - z_t_hat
+                # h_residual_mean[j - opt.n_past] += h_res
+                residual = h_prior_pred - h_posterior_pred
                 residual = torch.mean(residual, dim=0)
-                z_residual_mean[j - opt.n_past] += residual
-            last_h = h_target
-    z_residual_mean /= epoch_size  # get the mean error vector per time
+                h_residual_mean[j - opt.n_past] += residual
+    h_residual_mean /= epoch_size  # get the mean error vector per time
 
     # restart training dataset
     global train_loader
@@ -304,10 +301,10 @@ def do_stats():
                               batch_size=opt.batch_size,
                               drop_last=True,
                               pin_memory=True)
-
-    z_cov = torch.tensor(np.zeros((opt.n_future, opt.z_dim, opt.z_dim), dtype=np.float64), requires_grad=False,
+    h_residual_var = torch.tensor(np.zeros(opt.n_future, dtype=np.float32), requires_grad=False,
                                   device=torch.device('cuda:0'))
-
+    h_residual_vars = torch.tensor(np.zeros((opt.n_future, 128), dtype=np.float32), requires_grad=False,
+                                  device=torch.device('cuda:0'))
 
     for i in range(epoch_size):
         progress.update(i + 1)
@@ -316,70 +313,65 @@ def do_stats():
         except TypeError:
             print('got None at i = {}, terminating'.format(i))
             break
-
+        h_posterior = [encoder(x[j]) for j in range(opt.n_past + opt.n_future)]
         # print(h_posterior[0][0].size())
         frame_predictor.hidden = frame_predictor.init_hidden()
-        prior.hidden = prior.init_hidden()
         posterior.hidden = posterior.init_hidden()
-        last_h = encoder(x[0])
         for j in range(1, opt.n_past + opt.n_future):
-            h_target = encoder(x[j])
+            h_target = h_posterior[j][0].detach()
             if opt.last_frame_skip or j < opt.n_past:
-                h, skip = last_h
-                h = h.detach()
+                h, skip = h_posterior[j - 1]
             else:
-                h = last_h[0].detach()
+                h = h_posterior[j - 1][0].detach()
             # we predict h_t from h_{t-1}
-            z_t = posterior(h_target[0].detach()).detach()
-            z_t_hat = prior(h).detach()
+            h_prior_pred = frame_predictor(h).detach()
+            h_posterior_pred = posterior(h_target).detach()
 
             if j >= opt.n_past:
                 # h_res = h_prior_pred - h_posterior[j][0].detach()  # predicted h minus observed h
-                # squared_diff = torch.square(h_res - z_residual_mean[j - opt.n_past])
+                # squared_diff = torch.square(h_res - h_residual_mean[j - opt.n_past])
                 # squared_diff = torch.mean(squared_diff, dim=1)  # average squared residuals at time j over the dimensions of h
                 # squared_diff = torch.mean(squared_diff, dim=0)  # average squared residuals at time j over the batch
                 # h_residual_var[j - opt.n_past] += squared_diff
 
-                residual = z_t - z_t_hat  # B x D
-                # B x D x 1 * B x 1 x D -> B x D x D
-                sample_cov = torch.matmul(residual[:, :, np.newaxis], residual[:, np.newaxis, :])
-                sample_cov = torch.mean(sample_cov, axis=0)  # mean over batch dimension
-                z_cov[j - opt.n_past] += sample_cov
-            last_h = h_target
-    z_cov /= epoch_size
-    z_cov = z_cov.cpu().numpy()
-    z_sd = [np.sqrt(np.diag(cov)) for cov in z_cov]
-    z_sd = np.array(z_sd)
+                residual = h_prior_pred - h_posterior_pred
+                squared_err = torch.square(residual - h_residual_mean[j - opt.n_past])
+                # squared_err = torch.square(residual)
+                squared_err = torch.mean(squared_err, dim=0)  # average errs at time j over the batch
+                h_residual_vars[j - opt.n_past] += squared_err.detach()
+                squared_err = torch.mean(squared_err, dim=0)  # average errs at time j over the dimensions of h
+                h_residual_var[j - opt.n_past] += squared_err.detach()
+    h_residual_var /= epoch_size
+    h_residual_vars /= epoch_size
+    h_residual_sd = torch.sqrt(h_residual_var)
     print('Last i = {}'.format(i))
-    print('sd of z residual: ', z_sd)
-    print('norm(mean of z residual)', torch.norm(z_residual_mean, dim=1))
+    print('sd of h residual: ', h_residual_sd)
+    print('var of h residual: ', h_residual_var)
+    print('norm(mean of h residual)', torch.norm(h_residual_mean, dim=1))
+    print('vars of h residual: ', h_residual_vars)
 
     # H_err_cov = torch.tensor(np.zeros((opt.n_future, 128, 128), dtype=np.float32), requires_grad=False,
     #                          device=torch.device('cuda:0'))
 
     # plot some stuff
-    z_residual_mean_norm = torch.norm(z_residual_mean, dim=1).cpu()
-    plt.subplot(3, 1, 1)
+    h_residual_mean_norm = torch.norm(h_residual_mean, dim=1).cpu()
+    plt.subplot(2, 1, 1)
     plt.xlabel('Time')
     plt.tight_layout()
     plt.title("Norm of the residual mean")
-    plt.bar(np.arange(len(z_residual_mean_norm)), z_residual_mean_norm)
+    plt.bar(np.arange(len(h_residual_mean_norm)), h_residual_mean_norm)
 
-    plt.subplot(3, 1, 2)
+    plt.subplot(2, 1, 2)
     plt.xlabel('Time')
     plt.tight_layout()
     plt.title("Average dimensional sqrt(variance) of the residual")
-    plt.bar(np.arange(len(z_sd)), np.mean(z_sd, axis=1))
-    plt.savefig('z_residual.png')
+    plt.bar(np.arange(len(h_residual_sd.cpu())), h_residual_sd.cpu())
+    plt.savefig('post_h_residual.png')
 
-    stats_dict = {'mean': z_residual_mean.cpu().numpy(), 'cov': z_cov}
-    print(stats_dict['mean'].dtype)
-    print(stats_dict['cov'].dtype)
-    # f = open('new_mcs_stats_post.json', 'w')
-    # json.dump(stats_dict, f)
-    with open('new_mcs_stats_post.npy', 'wb') as f:
-        np.save(f, stats_dict['mean'])
-        np.save(f, stats_dict['cov'])
+    stats_dict = {'mean': h_residual_mean.cpu().tolist(), 'var': h_residual_var.cpu().tolist(),
+                  'vars': h_residual_vars.cpu().tolist()}
+    f = open('mcs_stats_post.json', 'w')
+    json.dump(stats_dict, f)
 
 
 do_stats()

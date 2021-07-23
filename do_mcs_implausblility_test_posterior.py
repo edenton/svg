@@ -30,7 +30,7 @@ parser.add_argument('--seed', default=1, type=int, help='manual seed')
 parser.add_argument('--epoch_size', type=int, default=1000, help='epoch size')
 parser.add_argument('--image_width', type=int, default=64, help='the height / width of the input image to network')
 parser.add_argument('--channels', default=1, type=int)
-parser.add_argument('--dataset', default='mcs', help='dataset to train with')
+parser.add_argument('--dataset', default='mcs_test', help='dataset to train with')
 parser.add_argument('--mcs_task', default='SpatioTemporalContinuityTraining4', help='mcs task')
 parser.add_argument('--n_past', type=int, default=5, help='number of frames to condition on')
 parser.add_argument('--n_future', type=int, default=195, help='number of frames to predict')
@@ -66,12 +66,17 @@ if opt.model_dir != '':
 else:
     raise ValueError("Please specify the model to load with the --model_dir argument")
 
+font = cv2.FONT_HERSHEY_SIMPLEX
+bottomLeftCornerOfText = (30, 30)
+fontScale = 0.6
+fontColor = (0, 0, 0)
+thickness = 1
+
 print("Random Seed: ", opt.seed)
 random.seed(opt.seed)
 torch.manual_seed(opt.seed)
 torch.cuda.manual_seed_all(opt.seed)
 dtype = torch.cuda.FloatTensor
-
 
 import models.lstm as lstm_models
 
@@ -80,6 +85,8 @@ if opt.model_dir != '':
     frame_predictor.batch_size = BATCH_SIZE
     posterior = saved_model['posterior']
     posterior.batch_size = BATCH_SIZE
+    prior = saved_model['prior']
+    prior.batch_size = BATCH_SIZE
 else:
     raise ValueError('Please specify --model_dir')
 
@@ -100,10 +107,7 @@ if opt.model_dir != '':
     decoder = saved_model['decoder']
     encoder = saved_model['encoder']
 else:
-    encoder = model.encoder(opt.g_dim, opt.channels)
-    decoder = model.decoder(opt.g_dim, opt.channels)
-    encoder.apply(utils.init_weights)
-    decoder.apply(utils.init_weights)
+    raise ValueError("Please specify the model to load with the --model_dir argument")
 
 # --------- loss functions ------------------------------------
 mse_criterion = nn.MSELoss()
@@ -129,13 +133,19 @@ opt.n_future = 195
 print(opt)
 
 # --------- load a dataset ------------------------------------
-train_data, test_data = utils.load_dataset(opt, sequential=True, implausible=True)
+train_data_implausible, test_data_implausible = utils.load_dataset(opt, sequential=True, implausible=True)
+train_data, test_data = utils.load_dataset(opt, sequential=True, implausible=False)
 
+train_loader_implausible = DataLoader(train_data_implausible,
+                                      num_workers=opt.data_threads,
+                                      batch_size=opt.batch_size,
+                                      drop_last=True,
+                                      pin_memory=True, )
 train_loader = DataLoader(train_data,
                           num_workers=opt.data_threads,
                           batch_size=opt.batch_size,
                           drop_last=True,
-                          pin_memory=True,)
+                          pin_memory=True, )
 test_loader = DataLoader(test_data,
                          num_workers=opt.data_threads,
                          batch_size=opt.batch_size,
@@ -151,8 +161,15 @@ def get_training_batch():
             yield batch
 
 
+def get_training_batch_implausible():
+    while True:
+        for sequence in train_loader_implausible:
+            batch = utils.normalize_data(opt, dtype, sequence)
+            yield batch
+
+
 training_batch_generator = get_training_batch()
-training_batch_generator_2 = get_training_batch()
+training_batch_generator_implausible = get_training_batch_implausible()
 
 
 def get_testing_batch():
@@ -255,23 +272,36 @@ def plot_rec(x, epoch):
     utils.save_tensors_image(fname, to_plot)
 
 
-def do_implasubility_test(h_residual_mean, h_residual_vars):
-    epoch_size = 1000 // opt.batch_size  # we have a total of 1000 videos
-    cov_inv = [np.diag(1.0 / h_var)[np.newaxis, ...] for h_var in h_residual_vars] # we assume the covariance matrix is diagonal and do the inverse for each time
-
+def do_implasubility_test(z_residual_mean, z_residual_cov, visualize=True):
+    epoch_size = 199 // opt.batch_size  # we have a total of 1000 videos
+    cov_inv = [np.linalg.pinv(cov, hermitian=True) for cov in
+               z_residual_cov]  # we assume the covariance matrix is diagonal and do the inverse for each time
+    # cov_inv = [np.linalg.inv(np.diag(np.diag(cov))) for cov in z_residual_cov]
+    # cov_inv = [np.eye(32) for cov in z_residual_cov]
     frame_predictor.eval()
     posterior.eval()
     encoder.eval()
     decoder.eval()
     progress = progressbar.ProgressBar(max_value=epoch_size).start()
-
-
+    confusion_matrix = [[0, 0], [0, 0]]
+    # for i in range(50):
+    #     if i % 2 == 0:
+    #         x = next(training_batch_generator)
+    #     else:
+    #         x = next(training_batch_generator_implausible)
     for i in range(epoch_size):
         h_residual_var = torch.tensor(np.zeros(opt.n_future, dtype=np.float32), requires_grad=False,
                                       device=torch.device('cpu'))
+        scores = np.array([0 for i in range(opt.n_future)], dtype=np.float32)
         progress.update(i + 1)
+        is_implausible = False
         try:
-            x = next(training_batch_generator)
+            if i % 2 == 0:
+                x = next(training_batch_generator)
+            else:
+                x = next(training_batch_generator_implausible)
+                is_implausible = True
+
             frames = [frame.cpu() for frame in x]
         except TypeError:
             print('got None at i = {}, terminating'.format(i))
@@ -289,8 +319,8 @@ def do_implasubility_test(h_residual_mean, h_residual_vars):
             else:
                 h = h_posterior[j - 1][0].detach()
             # we predict h_t from h_{t-1}
-            h_prior_pred = frame_predictor(h.detach())
-            h_posterior_pred = posterior(h_target.detach())
+            z_t = posterior(h_target[0].detach()).detach()
+            z_t_hat = prior(h).detach()
 
             if j >= opt.n_past + start - 1:
                 # h_res = h_prior_pred - h_posterior[j][0].detach()  # predicted h minus observed h
@@ -300,12 +330,19 @@ def do_implasubility_test(h_residual_mean, h_residual_vars):
                 # h_residual_var[j - opt.n_past] += squared_diff
 
                 # residual = (h_prior_pred - h_posterior_pred).cpu().detach()
-                residual = (last_post_pred - h_posterior_pred).cpu().detach()
-                # err = (residual - h_residual_mean[j - opt.n_past])
+                residual = (z_t - z_t_hat).cpu().detach().numpy()
+                # err = (residual - z_residual_mean[j - opt.n_past])
                 err = residual
                 err = np.square(err)  # [batch, dim_feature]
-                # err = err / h_residual_vars[j - opt.n_past][np.newaxis, ...]  # [batch, dim_feature] / [1, dim_feature]
-                err = torch.mean(err, axis=1)  # -> [batch,]
+                score = np.sum(err)
+                # score = np.matmul(err[:, np.newaxis, :], cov_inv[j - opt.n_past][np.newaxis, ...])  # B*1*D * 1*D*D
+                # score = np.matmul(score, err[:, :, np.newaxis])  # * B*1*D * B*D*1 -> B*1*1
+                # score = numpy.nan_to_num(score)
+                # score /= opt.z_dim
+
+                scores[j - opt.n_past] = np.sqrt(score)
+                # scores[j - opt.n_past] = score
+                # note: scores[t]^2 ~ Chi^2_df=z_dim so E[scores[t]^2] = z_dim
                 # if len(err.shape) == 2:  # [batch, dim_feature]
                 #     err = err[..., np.newaxis]  # make err into a vector [batch, dim_feature, 1]
                 # # print(cov_inv[j - opt.n_past].shape)
@@ -323,74 +360,83 @@ def do_implasubility_test(h_residual_mean, h_residual_vars):
                 # quit()
                 # mahanlanobis_dist = torch.mean(mahanlanobis_dist)  # scalar
 
-
                 # err = torch.mean(err, dim=1)  # average errs at time j over the dimensions of h
                 # err = torch.mean(err, dim=0)  # average errs at time j over the batch
                 # h_residual_var[j - opt.n_past] += err.detach()
-                h_residual_var[j - opt.n_past] += torch.mean(err, axis=0)
-            last_post_pred = h_posterior_pred.detach()
+                # h_residual_var[j - opt.n_past] += torch.mean(err, axis=0)
 
-        h_residual_sd = torch.sqrt(h_residual_var).cpu()
-
-        h_residual_sd_filtered = - h_residual_sd[:-2] + 2 * h_residual_sd[1:-1] - h_residual_sd[2:]
-
+        z_residual_scores_filtered = -0.25 * scores[:-2] + (0.5+0.5) * scores[1:-1] - 0.25 *scores[2:]
 
         # print(h_residual_var)
-        for j in range(len(frames)):
-            frame = np.uint8(np.minimum(frames[j][0][0], 1) * 255)
-            cv2.imshow('frame', frame)
-            cv2.waitKey(15)
-        fig = plt.figure()
-        plt.ylim(0, 2.0)
-        plt.xlabel('Time')
-        plt.title("sqrt of average squared dimensional error")
-        plt.bar(np.arange(len(h_residual_sd)), h_residual_sd)
-        fig.canvas.draw()
-        img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8,
-                            sep='')
-        img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        if visualize:
+            for j in range(len(frames)):
+                frame = np.uint8(np.minimum(frames[j][0][0], 1) * 255)
+                cv2.imshow('frame', frame)
+                cv2.waitKey(15)
 
-        plt.xlabel('Time')
-        plt.title("filtered sqrt of average squared dimensional error")
-        plt.bar(np.arange(len(h_residual_sd_filtered)), h_residual_sd_filtered)
-        fig.canvas.draw()
-        img2 = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8,
-                            sep='')
-        img2 = img2.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-        img2 = cv2.cvtColor(img2, cv2.COLOR_RGB2BGR)
+        percentile = np.percentile(scores[76:152], 85.0)
+        thresh = percentile * 1 + 0.5
+        spikes_idx = np.argwhere(z_residual_scores_filtered > thresh)
+        spikes_idx = spikes_idx[
+            (spikes_idx >= 75) & (spikes_idx <= 150)]  # ignore spikes near the start and end of video
+        spikes = z_residual_scores_filtered[spikes_idx]
+        msg = ''
+        if len(spikes_idx) > 0:
+            # we add n_past because the first n_past frames are not counted. Add 1 because of the filtering
+            msg = 'thresh {:.1f} IMPLAUSIBLE spikes: '.format(thresh) + str(['{:.2f}@{}'.format(z_residual_scores_filtered[k], k + opt.n_past + 1) for k in spikes_idx])
+            confusion_matrix[is_implausible][1] += 1
+        else:
+            max_idx = np.argmax(z_residual_scores_filtered[75:151]) + 75
+            msg = 'thresh {:.1f} PLAUSIBLE max {:.2f}@{}'.format(thresh, z_residual_scores_filtered[max_idx], max_idx + opt.n_past + 1)
+            confusion_matrix[is_implausible][0] += 1
 
-        cv2.imshow("plot", img)
-        cv2.imshow("plot2", img2)
+        print(msg)
 
-        k = cv2.waitKey(0)
-        if k == ord('q'):
-            quit()
+        if visualize:
+            fig = plt.figure()
+            # plt.ylim(0, 2.0)
+            plt.xlabel('Time')
+            plt.title("sqrt of average squared dimensional error")
+            plt.bar(np.arange(len(scores)), scores)
+            fig.canvas.draw()
+            img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8,
+                                sep='')
+            img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+            plt.xlabel('Time')
+            plt.title("filtered sqrt of average squared dimensional error")
+            plt.bar(np.arange(len(z_residual_scores_filtered)), z_residual_scores_filtered)
+            fig.canvas.draw()
+            img2 = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8,
+                                 sep='')
+            img2 = img2.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            img2 = cv2.cvtColor(img2, cv2.COLOR_RGB2BGR)
+
+            cv2.imshow("plot", img)
+            cv2.putText(img2, msg, bottomLeftCornerOfText, font, fontScale, fontColor, thickness, cv2.LINE_AA)
+            cv2.imshow("plot2", img2)
+
+            k = cv2.waitKey(0)
+            if k == ord('q'):
+                quit()
         # plt.savefig('implausibility_test.png')
     # h_residual_var /= epoch_size  # get the mean error vector per time
     # h_residual_sd = torch.sqrt(h_residual_var)
     print('Last i = {}'.format(i))
 
-
     # H_err_cov = torch.tensor(np.zeros((opt.n_future, 128, 128), dtype=np.float32), requires_grad=False,
     #                          device=torch.device('cuda:0'))
 
     # plot some stuff
-    h_residual_mean_norm = torch.norm(h_residual_mean, dim=1).cpu()
-    plt.subplot(2, 1, 1)
-    plt.xlabel('Time')
-    plt.tight_layout()
-    plt.title("Norm of the residual mean")
-    plt.bar(np.arange(len(h_residual_mean_norm)), h_residual_mean_norm)
-
-    plt.subplot(2, 1, 2)
-    plt.xlabel('Time')
-    plt.tight_layout()
-    plt.title("Average dimensional sqrt(variance) of the residual")
-    plt.bar(np.arange(len(h_residual_sd.cpu())), h_residual_sd.cpu())
-    plt.savefig('h_residual_mean.png')
+    return confusion_matrix
 
 
-f = open('mcs_stats_post.json', 'r')
-mcs_stats_dict = json.load(f)
-do_implasubility_test(np.array(mcs_stats_dict['mean']), np.array(mcs_stats_dict['vars']))
+# f = open('new_mcs_stats_post.json', 'r')
+# mcs_stats_dict = json.load(f)
+mcs_stats_dict = {}
+with open('new_mcs_stats_post.npy', 'rb') as f:
+    mcs_stats_dict['mean'] = np.load(f)
+    mcs_stats_dict['cov'] = np.load(f)
+conf_mat = do_implasubility_test(np.array(mcs_stats_dict['mean']), np.array(mcs_stats_dict['cov']), visualize=True)
+print(conf_mat)

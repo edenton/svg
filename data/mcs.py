@@ -11,10 +11,11 @@ from os import path
 
 class MCS(object):
 
-    def __init__(self, train, data_root, seq_len=20, image_size=64, task='ALL', sequential=None, implausible=False):
+    def __init__(self, train, data_root, seq_len=20, image_size=64, task='ALL', sequential=None, implausible=False, test_set=False):
         # if implausible is set to True, generates "fake" images by cutting out or repeating frames
         self.implausible = implausible
         self.data_root = '%s/mcs_videos_1000/processed/' % data_root
+        self.data_root = '%s/mcs_videos_test/processed/' % data_root
         if not os.path.exists(self.data_root):
             raise os.error('data/mcs.py: Data directory not found!')
         self.seq_len = seq_len
@@ -60,8 +61,8 @@ class MCS(object):
             # i is 0-indexed so we need to add 1 to i
             fname = frame_path + f'{i + 1:04d}.png'
             im = imageio.imread(fname) / 255.
-            gray = lambda rgb: np.dot(rgb[..., :3], [0.299, 0.587, 0.114])
-            im = gray(im)[..., np.newaxis]
+            # gray = lambda rgb: np.dot(rgb[..., :3], [0.299, 0.587, 0.114])
+            # im = gray(im)[..., np.newaxis]
             seq.append(im)
         return np.array(seq)
 
@@ -74,8 +75,8 @@ class MCS(object):
         # start = random.randint(100, 140)
         start = 110
         vid_len = len(seq)
-        duration = 10
-        implausibility_type = 0
+        duration = 7
+        implausibility_type = 1
         if implausibility_type == 1:  # object is invisible when/where it shouldn't be
             no_object_frame = seq[30]
             seq[start:start + duration] = no_object_frame
