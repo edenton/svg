@@ -30,6 +30,7 @@ parser.add_argument('--seed', default=1, type=int, help='manual seed')
 parser.add_argument('--epoch_size', type=int, default=1000, help='epoch size')
 parser.add_argument('--image_width', type=int, default=64, help='the height / width of the input image to network')
 parser.add_argument('--channels', default=1, type=int)
+parser.add_argument('--use_edge_kernels', action='store_true')
 parser.add_argument('--dataset', default='mcs_test', help='dataset to train with')
 parser.add_argument('--mcs_task', default='SpatioTemporalContinuityTraining4', help='mcs task')
 parser.add_argument('--n_past', type=int, default=5, help='number of frames to condition on')
@@ -303,6 +304,9 @@ def do_implasubility_test(z_residual_mean, z_residual_cov, visualize=True):
                 is_implausible = True
 
             frames = [frame.cpu() for frame in x]
+            # print(frames[0][0].numpy().dtype)
+            # print(frames[0][0])
+            # quit()
         except TypeError:
             print('got None at i = {}, terminating'.format(i))
             break
@@ -370,8 +374,10 @@ def do_implasubility_test(z_residual_mean, z_residual_cov, visualize=True):
         # print(h_residual_var)
         if visualize:
             for j in range(len(frames)):
-                frame = np.uint8(np.minimum(frames[j][0][0], 1) * 255)
-                cv2.imshow('frame', frame)
+                frame_cv2 = frames[j][0][0].numpy()
+                frame_cv2 /= 3
+                frame_cv2 = np.uint8(np.minimum(frame_cv2, 1.0) * 255.)
+                cv2.imshow('frame', frame_cv2)
                 cv2.waitKey(15)
 
         percentile = np.percentile(scores[76:152], 85.0)

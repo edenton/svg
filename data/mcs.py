@@ -1,6 +1,8 @@
 import logging
 import random
 import os
+
+import cv2
 import numpy as np
 from glob import glob
 import torch
@@ -11,15 +13,21 @@ from os import path
 
 class MCS(object):
 
-    def __init__(self, train, data_root, seq_len=20, image_size=64, task='ALL', sequential=None, implausible=False, test_set=False):
+    def __init__(self, train, data_root, seq_len=20, image_size=64, task='ALL', sequential=None, implausible=False,
+                 test_set=False, im_channels=1, use_edge_kernels=True):
         # if implausible is set to True, generates "fake" images by cutting out or repeating frames
         self.implausible = implausible
         self.data_root = '%s/mcs_videos_1000/processed/' % data_root
-        self.data_root = '%s/mcs_videos_test/processed/' % data_root
+        # self.data_root = '%s/mcs_videos_test/processed/' % data_root
         if not os.path.exists(self.data_root):
             raise os.error('data/mcs.py: Data directory not found!')
         self.seq_len = seq_len
         self.image_size = image_size
+        self.im_channels = im_channels
+        if use_edge_kernels:
+            if im_channels != 1:
+                raise AssertionError('Using edge kernels implies the output images are grayscale! Set im_channels to 1!')
+        self.use_edge_kernels = use_edge_kernels
 
         # print('mcs.py: found tasks ', self.tasks)
         self.video_folder = {}
@@ -60,9 +68,34 @@ class MCS(object):
         for i in range(start, start + self.seq_len):
             # i is 0-indexed so we need to add 1 to i
             fname = frame_path + f'{i + 1:04d}.png'
-            im = imageio.imread(fname) / 255.
-            # gray = lambda rgb: np.dot(rgb[..., :3], [0.299, 0.587, 0.114])
-            # im = gray(im)[..., np.newaxis]
+            im = imageio.imread(fname) / np.float32(255.)
+            if self.im_channels == 1:  # convert to grayscale if specified
+                if not self.use_edge_kernels:
+                    # regular grayscale conversion
+                    gray = lambda rgb: np.dot(rgb[..., :3], [0.299, 0.587, 0.114])
+                    im = gray(im)[..., np.newaxis]
+                else:
+                    edge_map = np.zeros((self.image_size, self.image_size), dtype=np.float32)
+                    ddepth = cv2.CV_32F
+                    scale = 1
+                    delta = 0
+                    for channel in range(3):
+                        color = im[..., channel]
+                        # grad_x = cv2.Sobel(color, ddepth, 1, 0, ksize=5, scale=scale, delta=delta,
+                        #                    borderType=cv2.BORDER_DEFAULT)
+                        # grad_y = cv2.Sobel(color, ddepth, 0, 1, ksize=5, scale=scale, delta=delta,
+                        #                    borderType=cv2.BORDER_DEFAULT)
+                        grad_x = cv2.Scharr(color, ddepth, 1, 0, scale=scale, delta=delta,
+                                            borderType=cv2.BORDER_DEFAULT)
+                        grad_y = cv2.Scharr(color, ddepth, 0, 1, scale=scale, delta=delta,
+                                            borderType=cv2.BORDER_DEFAULT)
+                        # abs_grad_x = np.abs(grad_x)
+                        # abs_grad_y = np.abs(grad_y)
+                        edge_map += np.sqrt(grad_x**2 + grad_y**2)
+                    edge_map /= 3*2  # 3 channels and two directions per channel
+                    edge_map /= 6  # to reduce magnitude
+                    im = edge_map[..., np.newaxis]
+
             seq.append(im)
         return np.array(seq)
 
@@ -73,7 +106,7 @@ class MCS(object):
         """
         implausibility_type = random.randint(1, 3)
         # start = random.randint(100, 140)
-        start = 110
+        start = 115
         vid_len = len(seq)
         duration = 7
         implausibility_type = 1

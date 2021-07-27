@@ -12,11 +12,12 @@ import utils
 import itertools
 import progressbar
 import numpy as np
+import json
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--lr', default=0.004, type=float, help='learning rate')
+parser.add_argument('--lr', default=0.0001, type=float, help='learning rate')
 parser.add_argument('--beta1', default=0.9, type=float, help='momentum term for adam')
-parser.add_argument('--batch_size', default=22, type=int, help='batch size')
+parser.add_argument('--batch_size', default=24, type=int, help='batch size')
 parser.add_argument('--log_dir', default='logs/nonstochastic_posterior', help='base directory to save logs')
 parser.add_argument('--model_dir', default='', help='base directory to save logs')
 parser.add_argument('--name', default='', help='identifier for directory')
@@ -27,6 +28,7 @@ parser.add_argument('--seed', default=1, type=int, help='manual seed')
 parser.add_argument('--epoch_size', type=int, default=500, help='epoch size')
 parser.add_argument('--image_width', type=int, default=64, help='the height / width of the input image to network')
 parser.add_argument('--channels', default=3, type=int, help='number of channels for input images. ')
+parser.add_argument('--use_edge_kernels', action='store_true')
 parser.add_argument('--dataset', default='mcs', help='dataset to train with')
 parser.add_argument('--mcs_task', default='SpatioTemporalContinuityTraining4', help='mcs task')
 parser.add_argument('--n_past', type=int, default=5, help='number of frames to condition on')
@@ -57,14 +59,20 @@ if opt.model_dir != '':
     model_dir = opt.model_dir
     niter = opt.niter
     lr = opt.lr
+    batch_size = opt.batch_size
+    n_future = opt.n_future
+    n_eval = opt.n_eval
     opt = saved_model['opt']
     opt.niter = niter  # update number of epochs to train for
     opt.optimizer = optimizer
     opt.model_dir = model_dir
+    opt.n_future = n_future
     opt.lr = lr
+    opt.batch_size = batch_size
+    opt.n_eval = n_eval
     opt.log_dir = '%s/continued_lr%s' % (opt.log_dir, opt.lr)
 else:
-    name = 'NEWmodel=%s%dx%d-rnn_size=%d-predictor-posterior-rnn_layers=%d-%d-n_past=%d-n_future=%d-lr=%.4f-g_dim=%d-z_dim=%d-last_frame_skip=%d-beta=%.7f-gamma=%.7f%s' % (opt.model, opt.image_width, opt.image_width, opt.rnn_size, opt.predictor_rnn_layers, opt.posterior_rnn_layers, opt.n_past, opt.n_future, opt.lr, opt.g_dim, opt.z_dim, opt.last_frame_skip, opt.beta, opt.gamma, opt.name)
+    name = 'RGBmodel=%s%dx%d-rnn_size=%d-predictor-posterior-rnn_layers=%d-%d-n_past=%d-n_future=%d-lr=%.4f-g_dim=%d-z_dim=%d-last_frame_skip=%d-beta=%.7f-gamma=%.7f%s' % (opt.model, opt.image_width, opt.image_width, opt.rnn_size, opt.predictor_rnn_layers, opt.posterior_rnn_layers, opt.n_past, opt.n_future, opt.lr, opt.g_dim, opt.z_dim, opt.last_frame_skip, opt.beta, opt.gamma, opt.name)
     if opt.dataset == 'smmnist':
         opt.log_dir = '%s/%s-%d/%s' % (opt.log_dir, opt.dataset, opt.num_digits, name)
     elif opt.dataset == 'mcs':
@@ -72,8 +80,10 @@ else:
     else:
         opt.log_dir = '%s/%s/%s' % (opt.log_dir, opt.dataset, name)
 
-os.makedirs('%s/gen/' % opt.log_dir, exist_ok=True)
-os.makedirs('%s/plots/' % opt.log_dir, exist_ok=True)
+os.makedirs('%s/gen/' % opt.log_dir, exist_ok=False)
+os.makedirs('%s/plots/' % opt.log_dir, exist_ok=False)
+with open(os.path.join(opt.log_dir, 'opt.json'), 'w') as f:
+    json.dump(opt.__dict__, f, indent=2)
 
 print("Random Seed: ", opt.seed)
 random.seed(opt.seed)
@@ -99,8 +109,11 @@ else:
 import models.lstm as lstm_models
 if opt.model_dir != '':
     frame_predictor = saved_model['frame_predictor']
+    frame_predictor.batch_size = opt.batch_size
     prior = saved_model['prior']
+    prior.batch_size = opt.batch_size
     posterior = saved_model['posterior']
+    posterior.batch_size = opt.batch_size
 else:
     frame_predictor = lstm_models.lstm(opt.g_dim + opt.z_dim, opt.g_dim, opt.rnn_size, opt.predictor_rnn_layers, opt.batch_size)
     posterior = lstm_models.lstm(opt.g_dim, opt.z_dim, opt.rnn_size, opt.posterior_rnn_layers, opt.batch_size)
@@ -162,7 +175,7 @@ train_loader = DataLoader(train_data,
                           batch_size=opt.batch_size,
                           shuffle=True,
                           drop_last=True,
-                          pin_memory=True)
+                          pin_memory=True,)
 test_loader = DataLoader(test_data,
                          num_workers=opt.data_threads,
                          batch_size=opt.batch_size,
@@ -189,18 +202,22 @@ def plot(x, epoch):
 
     nsample = 1
     gen_seq = [[] for _ in range(nsample)]
-    gt_seq = [x[i] for i in range(len(x))]
+    gt_seq = [utils.torch_rgb_img_to_gray(x[t]) for t in range(len(x))]
 
     # h_seq = [encoder(x[i]) for i in range(opt.n_past)]
     for s in range(nsample):
         frame_predictor.hidden = frame_predictor.init_hidden()
         posterior.hidden = posterior.init_hidden()
         prior.hidden = prior.init_hidden()
-        gen_seq[s].append(x[0])
+        gen_seq[s].append(utils.torch_rgb_img_to_gray(x[0]))
         x_in = x[0]
         for i in range(1, opt.n_eval):
             with torch.no_grad():
-                h = encoder(x_in)
+                # if input is grayscale
+                if x_in.shape[1] == 1 and opt.channels == 3:
+                    h = encoder(torch.cat(3*[x_in], dim=1))  # convert to RGB
+                else:
+                    h = encoder(x_in)
             if opt.last_frame_skip or i < opt.n_past:
                 h, skip = h
             else:
@@ -208,12 +225,11 @@ def plot(x, epoch):
             h = h.detach()
             if i < opt.n_past:
                 h_target = encoder(x[i])
-                h_target = h_target[0].detach()
-                z_t = posterior(h_target)
+                z_t = posterior(h_target[0].detach())
                 prior(h)
                 frame_predictor(torch.cat([h, z_t], 1))
                 x_in = x[i]
-                gen_seq[s].append(x_in)
+                gen_seq[s].append(utils.torch_rgb_img_to_gray(x_in))
             else:
                 z_t_hat = prior(h)
                 h = frame_predictor(torch.cat([h, z_t_hat], 1)).detach()
@@ -234,7 +250,7 @@ def plot(x, epoch):
         for s in range(nsample):
             row = []
             for t in range(opt.n_eval):
-                row.append(gen_seq[s][t][i]) 
+                row.append(gen_seq[s][t][i])
             to_plot.append(row)
         for t in range(opt.n_eval):
             row = []
@@ -258,18 +274,18 @@ def plot_rec(x, epoch):
     frame_predictor.hidden = frame_predictor.init_hidden()
     posterior.hidden = posterior.init_hidden()
     h = encoder(x[0])
-    h = (h[0].detach(), h[1].detach())
+    h = (h[0].detach(), h[1])
     for i in range(1, opt.n_past+opt.n_future):
         h_target = encoder(x[i])
-        h_target = (h_target[0].detach(), h_target[1].detach())
+        h_target = (h_target[0].detach(), h_target[1])
         if opt.last_frame_skip or i < opt.n_past:	
             h, skip = h
         else:
             h, _ = h
-        z_t = posterior(h_target)
+        z_t = posterior(h_target[0])
         if i < opt.n_past:
             frame_predictor(torch.cat([h, z_t], 1))
-            gen_seq_post.append(x[i])
+            gen_seq_post.append(utils.torch_rgb_img_to_gray(x[i]))
         else:
             h_pred = frame_predictor(torch.cat([h, z_t], 1)).detach()
             x_pred = decoder([h_pred, skip]).detach()
@@ -280,10 +296,10 @@ def plot_rec(x, epoch):
     frame_predictor.hidden = frame_predictor.init_hidden()
     prior.hidden = prior.init_hidden()
     h = encoder(x[0])
-    h = (h[0].detach(), h[1].detach())
+    h = (h[0].detach(), h[1])
     for i in range(1, opt.n_past+opt.n_future):
         h_target = encoder(x[i])
-        h_target = (h_target[0].detach(), h_target[1].detach())
+        h_target = (h_target[0].detach(), h_target[1])
         if opt.last_frame_skip or i < opt.n_past:
             h, skip = h
         else:
@@ -292,7 +308,7 @@ def plot_rec(x, epoch):
         z_t_hat = prior(h)
         if i < opt.n_past:
             frame_predictor(torch.cat([h, z_t_hat], 1))
-            gen_seq.append(x[i])
+            gen_seq.append(utils.torch_rgb_img_to_gray(x[i]))
         else:
             h_pred = frame_predictor(torch.cat([h, z_t_hat], 1)).detach()
             x_pred = decoder([h_pred, skip]).detach()
@@ -301,7 +317,7 @@ def plot_rec(x, epoch):
    
     to_plot = []
     nrow = min(opt.batch_size, 25)
-    x_gray = [utils.torch_rgb_img_to_gray(time) for time in range(opt.n_past+opt.n_future)]
+    x_gray = [utils.torch_rgb_img_to_gray(x[t]) for t in range(opt.n_past+opt.n_future)]
     for i in range(nrow):
         row_gt = []
         row_post = []
@@ -344,7 +360,6 @@ def train(x):
         z_t_hat = prior(h)
         h_pred = frame_predictor(torch.cat([h, z_t], 1))
         x_pred = decoder([h_pred, skip])
-
         gray_target_frame = utils.torch_rgb_img_to_gray(x[i])
         mse += mse_criterion(x_pred, gray_target_frame)
         # penalize prior for being far from posterior
