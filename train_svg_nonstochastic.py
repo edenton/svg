@@ -51,12 +51,10 @@ if opt.model_dir != '':
     latest_model = sorted(models, key=lambda s: int(s[s.rfind('_e') + 2: s.rfind('.pth')]), reverse=True)[0]
     print('Loading model ', latest_model)
     saved_model = torch.load(latest_model)
-    optimizer = opt.optimizer
     model_dir = opt.model_dir
     niter = opt.niter
     opt = saved_model['opt']
     opt.niter = niter  # update number of epochs to train for
-    opt.optimizer = optimizer
     opt.model_dir = model_dir
     opt.log_dir = '%s/continued' % opt.log_dir
 else:

@@ -16,7 +16,7 @@ DATA_ROOT = args.datadir
 IMSIZE = args.imsize
 
 if not path.exists(DATA_ROOT):
-    print(f'directory "{DATA_ROOT}" does not exist! Check arguments')
+    print(f'directory "{DATA_ROOT}" does not exist! Check -d dataset argument')
 elif not path.exists(path.join(DATA_ROOT, 'raw')):
     print("Training videos must be in [datadir]/raw/(task)/*.mp4, where task is the task to which "
           "the video belongs")

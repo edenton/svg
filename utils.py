@@ -130,7 +130,8 @@ def load_dataset(opt, sequential=None, implausible=None):
             implausible=implausible,
             test_set=True,
             im_channels=opt.channels,
-            use_edge_kernels=opt.use_edge_kernels)
+            use_edge_kernels=opt.use_edge_kernels,
+            labels=True)
         test_data = MCS(
             train=False,
             data_root=opt.data_root,
@@ -141,7 +142,8 @@ def load_dataset(opt, sequential=None, implausible=None):
             implausible=implausible,
             test_set=True,
             im_channels=opt.channels,
-            use_edge_kernels=opt.use_edge_kernels)
+            use_edge_kernels=opt.use_edge_kernels,
+            labels=True)
 
     return train_data, test_data
 
@@ -151,7 +153,8 @@ def sequence_input(seq, dtype):
 
 
 def normalize_data(opt, dtype, sequence):
-    if opt.dataset == 'smmnist' or opt.dataset == 'kth' or opt.dataset == 'bair' or opt.dataset == 'mcs':
+    if opt.dataset == 'smmnist' or opt.dataset == 'kth' or opt.dataset == 'bair' or opt.dataset == 'mcs'\
+            or opt.dataset == 'mcs_test':
         sequence.transpose_(0, 1)
         sequence.transpose_(3, 4).transpose_(2, 3)
     else:

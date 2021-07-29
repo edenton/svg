@@ -14,16 +14,19 @@ from os import path
 class MCS(object):
 
     def __init__(self, train, data_root, seq_len=20, image_size=64, task='ALL', sequential=None, implausible=False,
-                 test_set=False, im_channels=1, use_edge_kernels=True):
+                 test_set=False, im_channels=1, use_edge_kernels=True, labels=False):
         # if implausible is set to True, generates "fake" images by cutting out or repeating frames
         self.implausible = implausible
-        self.data_root = '%s/mcs_videos_1000/processed/' % data_root
-        # self.data_root = '%s/mcs_videos_test/processed/' % data_root
+        if test_set:
+            self.data_root = '%s/mcs_videos_test/processed/' % data_root
+        else:
+            self.data_root = '%s/mcs_videos_1000/processed/' % data_root
         if not os.path.exists(self.data_root):
             raise os.error('data/mcs.py: Data directory not found!')
         self.seq_len = seq_len
         self.image_size = image_size
         self.im_channels = im_channels
+        self.labels = labels
         if use_edge_kernels:
             if im_channels != 1:
                 raise AssertionError('Using edge kernels implies the output images are grayscale! Set im_channels to 1!')
@@ -41,11 +44,11 @@ class MCS(object):
             self.video_folder[task] = [path.basename(folder) for folder in
                                        sorted(glob(path.join(self.data_root, task, '*')))]
             self.len_video_folder[task] = len(self.video_folder[task])
-
         self.seed_set = False
         self.sequential = sequential  # if set to true, return videos in sequence
 
     def get_sequence(self, idx=None):
+
         if not self.sequential:
             task = random.choice(self.tasks)
             vid = random.choice(self.video_folder[task])
@@ -60,6 +63,8 @@ class MCS(object):
             vid = self.video_folder[task][idx]
             num_frames = len(next(os.walk(path.join(self.data_root, task, vid)))[2])
             frame_path = path.join(self.data_root, task, vid, vid + '_')
+        label = str(os.path.basename(vid))
+        label = label[label.rfind('_') + 1:]
         if num_frames - self.seq_len < 0:
             return None
         start = random.randint(0, num_frames - self.seq_len)
@@ -97,7 +102,10 @@ class MCS(object):
                     im = edge_map[..., np.newaxis]
 
             seq.append(im)
-        return np.array(seq)
+        if self.labels:
+            return np.array(seq), label
+        else:
+            return np.array(seq)
 
     def abnormalize_sequence(self, seq):
         """
@@ -128,11 +136,18 @@ class MCS(object):
             random.seed(index)
             np.random.seed(index)
             # torch.manual_seed(index)
-        seq = self.get_sequence(index)
+        if self.labels:
+            seq, labels = self.get_sequence(index)
+        else:
+            seq = self.get_sequence(index)
+
         if seq is not None:
             if self.implausible:
                 seq = self.abnormalize_sequence(seq)
-            return torch.from_numpy(seq)
+            if self.labels:
+                return torch.from_numpy(seq), labels
+            else:
+                return torch.from_numpy(seq)
         else:
             return None
 
