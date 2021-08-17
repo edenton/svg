@@ -14,7 +14,7 @@ from os import path
 class MCS(object):
 
     def __init__(self, train, data_root, seq_len=20, image_size=64, task='ALL', sequential=None, implausible=False,
-                 test_set=False, im_channels=1, use_edge_kernels=True, labels=False):
+                 test_set=False, im_channels=1, use_edge_kernels=True, labels=False, start_min=None, start_max=None, sequence_stride=None):
         # if implausible is set to True, generates "fake" images by cutting out or repeating frames
         self.implausible = implausible
         if test_set:
@@ -31,6 +31,9 @@ class MCS(object):
             if im_channels != 1:
                 raise AssertionError('Using edge kernels implies the output images are grayscale! Set im_channels to 1!')
         self.use_edge_kernels = use_edge_kernels
+        self.start_min = start_min
+        self.start_max = start_max
+        self.sequence_stride = sequence_stride
 
         # print('mcs.py: found tasks ', self.tasks)
         self.video_folder = {}
@@ -48,7 +51,7 @@ class MCS(object):
         self.sequential = sequential  # if set to true, return videos in sequence
 
     def get_sequence(self, idx=None):
-
+        stride = max(1, self.sequence_stride)
         if not self.sequential:
             task = random.choice(self.tasks)
             vid = random.choice(self.video_folder[task])
@@ -61,16 +64,25 @@ class MCS(object):
             if idx >= self.len_video_folder[task]:
                 return None  # we've run out of videos
             vid = self.video_folder[task][idx]
-            num_frames = len(next(os.walk(path.join(self.data_root, task, vid)))[2])
+            num_frames = len(next(os.walk(path.join(self.data_root, task, vid)))[2])  # how many frames we can use after considering the stride
             frame_path = path.join(self.data_root, task, vid, vid + '_')
         label = str(os.path.basename(vid))
         label = label[label.rfind('_') + 1:]
-        if num_frames - self.seq_len < 0:
-            return None
-        start = random.randint(0, num_frames - self.seq_len)
+
+        start_min = 0
+        start_max = num_frames - 1 - (self.seq_len - 1) * stride
+        if start_max < 0:
+            raise ValueError("Number of frames in the dataset less than the desired sequence length!")
+        if self.start_min:
+            start_min = self.start_min
+        if self.start_max:
+            assert self.start_max <= start_max  # so the sequence doesn't start too late
+            start_max = self.start_max
+        assert start_min <= start_max
+        start = random.randint(start_min, start_max)
         seq = []
         # choose a random subsequence of frames in the selected video
-        for i in range(start, start + self.seq_len):
+        for i in range(start, start + self.seq_len * stride, stride):
             # i is 0-indexed so we need to add 1 to i
             fname = frame_path + f'{i + 1:04d}.png'
             im = imageio.imread(fname) / np.float32(255.)
@@ -97,8 +109,8 @@ class MCS(object):
                         # abs_grad_x = np.abs(grad_x)
                         # abs_grad_y = np.abs(grad_y)
                         edge_map += np.sqrt(grad_x**2 + grad_y**2)
-                    edge_map /= 3*2  # 3 channels and two directions per channel
-                    edge_map /= 6  # to reduce magnitude
+                    edge_map /= 3  # 3 channels
+                    edge_map /= 12  # to reduce magnitude
                     im = edge_map[..., np.newaxis]
 
             seq.append(im)

@@ -107,7 +107,10 @@ def load_dataset(opt, sequential=None, implausible=None):
             sequential=sequential,
             implausible=implausible,
             im_channels=opt.channels,
-            use_edge_kernels=opt.use_edge_kernels)
+            use_edge_kernels=opt.use_edge_kernels,
+            start_min=opt.start_min,
+            start_max=opt.start_max,
+            sequence_stride=opt.sequence_stride)
         test_data = MCS(
             train=False,
             data_root=opt.data_root,
@@ -117,7 +120,10 @@ def load_dataset(opt, sequential=None, implausible=None):
             sequential=sequential,
             implausible=implausible,
             im_channels=opt.channels,
-            use_edge_kernels=opt.use_edge_kernels)
+            use_edge_kernels=opt.use_edge_kernels,
+            start_min=opt.start_min,
+            start_max=opt.start_max,
+            sequence_stride=opt.sequence_stride)
     elif opt.dataset == 'mcs_test':
         from data.mcs import MCS
         train_data = MCS(
