@@ -1,3 +1,8 @@
 numpy
 torch
 shapely
+sklearn
+matplotlib
+scikit-image
+progressbar2
+opencv-python
