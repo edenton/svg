@@ -15,7 +15,7 @@ import numpy as np
 import json
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--lr', default=0.0004, type=float, help='learning rate')
+parser.add_argument('--lr', default=0.0001, type=float, help='learning rate')
 parser.add_argument('--beta1', default=0.9, type=float, help='momentum term for adam')
 parser.add_argument('--batch_size', default=13, type=int, help='batch size')
 parser.add_argument('--log_dir', default='logs/nonstochastic_posterior', help='base directory to save logs')
