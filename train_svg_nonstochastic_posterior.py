@@ -417,7 +417,7 @@ for epoch in range(opt.niter):
         'decoder': decoder,
         'frame_predictor': frame_predictor,
         'posterior': posterior,
-        'prior': posterior,
+        'prior': prior,
         'opt': opt},
         '%s/model_e%02d.pth' % (opt.log_dir, epoch))
     if epoch % 10 == 0:
