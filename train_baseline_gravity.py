@@ -64,6 +64,7 @@ if opt.model_dir != '':
     batch_size = opt.batch_size
     n_future = opt.n_future
     n_eval = opt.n_eval
+    data_root = opt.data_root
     opt = saved_model['opt']
     opt.niter = niter  # update number of epochs to train for
     opt.model_dir = model_dir
@@ -71,6 +72,7 @@ if opt.model_dir != '':
     opt.lr = lr
     opt.batch_size = batch_size
     opt.n_eval = n_eval
+    opt.data_root = data_root
     opt.log_dir = '%s/continued_lr%s' % (opt.log_dir, opt.lr)
 else:
     name = 'model=%s%dx%d-rnn_size=%d-predictor-posterior-rnn_layers=%d-%d-n_past=%d-n_future=%d-lr=%.4f-g_dim=%d-z_dim=%d-last_frame_skip=%d-beta=%.7f-gamma=%.7f%s' % (opt.model, opt.image_width, opt.image_width, opt.rnn_size, opt.predictor_rnn_layers, opt.posterior_rnn_layers, opt.n_past, opt.n_future, opt.lr, opt.g_dim, opt.z_dim, opt.last_frame_skip, opt.beta, opt.gamma, opt.name)
@@ -107,6 +109,8 @@ elif opt.optimizer == 'rmsprop':
     opt.optimizer = optim.RMSprop
 elif opt.optimizer == 'sgd':
     opt.optimizer = optim.SGD
+elif isinstance(opt.optimizer, type):
+    pass
 else:
     raise ValueError('Unknown optimizer: %s' % opt.optimizer)
 
