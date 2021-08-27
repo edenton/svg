@@ -17,7 +17,7 @@ import json
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', default=0.0002, type=float, help='learning rate')
 parser.add_argument('--beta1', default=0.9, type=float, help='momentum term for adam')
-parser.add_argument('--batch_size', default=10, type=int, help='batch size')
+parser.add_argument('--batch_size', default=16, type=int, help='batch size')
 parser.add_argument('--log_dir', default='logs/nonstochastic_posterior', help='base directory to save logs')
 parser.add_argument('--model_dir', default='', help='base directory to save logs')
 parser.add_argument('--name', default='', help='identifier for directory')
@@ -30,13 +30,13 @@ parser.add_argument('--image_width', type=int, default=64, help='the height / wi
 parser.add_argument('--channels', default=1, type=int, help='number of channels for input images. ')
 parser.add_argument('--use_edge_kernels', default=True, type=bool, help='whether to use edge kernels to reduce to 1 channel')
 parser.add_argument('--dataset', default='mcs', help='dataset to train with')
-parser.add_argument('--mcs_task', default='ObjectPermanenceTraining4', help='mcs task')
+parser.add_argument('--mcs_task', default='SpatioTemporalContinuityTraining4', help='mcs task')
 parser.add_argument('--n_past', type=int, default=5, help='number of frames to condition on')
-parser.add_argument('--n_future', type=int, default=45, help='number of frames to predict')
-parser.add_argument('--n_eval', type=int, default=50, help='number of frames to predict at eval time')
-parser.add_argument('--start_min', type=int, default=65, help='min starting time for sampling sequence (0-indexed)')
-parser.add_argument('--start_max', type=int, default=85, help='max starting time for sampling sequence  (0-indexed)')
-parser.add_argument('--sequence_stride', type=int, default=3, help='factor for sequence temporal subsampling (int)')
+parser.add_argument('--n_future', type=int, default=25, help='number of frames to predict')
+parser.add_argument('--n_eval', type=int, default=30, help='number of frames to predict at eval time')
+parser.add_argument('--start_min', type=int, default=80, help='min starting time for sampling sequence (0-indexed)')
+parser.add_argument('--start_max', type=int, default=135, help='max starting time for sampling sequence  (0-indexed)')
+parser.add_argument('--sequence_stride', type=int, default=1, help='factor for sequence temporal subsampling (int)')
 parser.add_argument('--rnn_size', type=int, default=256, help='dimensionality of hidden layer')
 parser.add_argument('--prior_rnn_layers', type=int, default=1, help='number of layers')
 parser.add_argument('--posterior_rnn_layers', type=int, default=1, help='number of layers')
@@ -81,13 +81,10 @@ else:
     else:
         opt.log_dir = '%s/%s/%s' % (opt.log_dir, opt.dataset, name)
 
-os.makedirs('%s/gen/' % opt.log_dir, exist_ok=True)
-os.makedirs('%s/plots/' % opt.log_dir, exist_ok=True)
+os.makedirs('%s/gen/' % opt.log_dir, exist_ok=False)
+os.makedirs('%s/plots/' % opt.log_dir, exist_ok=False)
 with open(os.path.join(opt.log_dir, 'opt.json'), 'w') as f:
-    opt2 = opt.__dict__.copy()
-    if isinstance(opt2['optimizer'], type):
-        opt2['optimizer'] = str(opt2['optimizer'])
-    json.dump(opt2, f, indent=2)
+    json.dump(opt.__dict__, f, indent=2)
 
 print("Random Seed: ", opt.seed)
 random.seed(opt.seed)
@@ -107,8 +104,6 @@ elif opt.optimizer == 'rmsprop':
     opt.optimizer = optim.RMSprop
 elif opt.optimizer == 'sgd':
     opt.optimizer = optim.SGD
-elif isinstance(opt.optimizer, type):
-    pass
 else:
     raise ValueError('Unknown optimizer: %s' % opt.optimizer)
 
@@ -354,14 +349,6 @@ def train(x):
 
     mse = 0
     mse_residual = 0
-    # x: T x B x C x H x W
-    x_diff = [1]
-    for i in range(1, len(x)):
-        diff = torch.abs(x[i] - x[i - 1])
-        diff = torch.mean(diff, dim=(1, 2, 3)).detach()  # mean over channels, width, and height
-        x_diff.append(diff)
-
-        # print(i, x_diff > 1e-6)
     h = encoder(x[0])
     for i in range(1, opt.n_past+opt.n_future):
         h_target = encoder(x[i])
@@ -375,12 +362,9 @@ def train(x):
         h_pred = frame_predictor(torch.cat([h, z_t], 1))
         x_pred = decoder([h_pred, skip])
         gray_target_frame = utils.torch_rgb_img_to_gray(x[i])
-
-        still_frames = x_diff[i] <= 5e-6
-        weights = torch.pow(0.05, still_frames).detach()[:, None, None, None]
-        mse += mse_criterion(weights * x_pred, weights * gray_target_frame)
+        mse += mse_criterion(x_pred, gray_target_frame)
         # penalize prior for being far from posterior
-        mse_residual += opt.gamma * torch.mean(weights * torch.square(z_t.detach() - z_t_hat))
+        mse_residual += opt.gamma * torch.mean(torch.square(z_t.detach() - z_t_hat))
         h = h_target
 
     loss = mse + mse_residual
