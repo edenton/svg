@@ -84,8 +84,11 @@ else:
 os.makedirs('%s/gen/' % opt.log_dir, exist_ok=False)
 os.makedirs('%s/plots/' % opt.log_dir, exist_ok=False)
 with open(os.path.join(opt.log_dir, 'opt.json'), 'w') as f:
-    json.dump(opt.__dict__, f, indent=2)
-
+    opt2 = opt.__dict__.copy()
+    if isinstance(opt2['optimizer'], type):
+        opt2['optimizer'] = str(opt2['optimizer'])
+    json.dump(opt2, f, indent=2)
+    del opt2
 print("Random Seed: ", opt.seed)
 random.seed(opt.seed)
 torch.manual_seed(opt.seed)
