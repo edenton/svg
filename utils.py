@@ -289,13 +289,15 @@ def batch_flatten(x):
 
 
 def clear_progressbar():
-    # moves up 3 lines
-    print("\033[2A")
-    # deletes the whole line, regardless of character position
-    print("\033[2K")
-    # moves up two lines again
-    print("\033[2A")
-
+    # # moves up 3 lines
+    # print("\033[2A")
+    # # deletes the whole line, regardless of character position
+    # print("\033[2K")
+    # # moves up two lines again
+    # print("\033[2A")
+    print('\r')
+    print(' ' * 80)
+    print('\r')
 
 def mse_metric(x1, x2):
     err = np.sum((x1 - x2) ** 2)
