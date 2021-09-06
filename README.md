@@ -1,3 +1,6 @@
+# Fred Lu's fork of "Stochastic Video Generation with a Learned Prior"
+I modified Emily Denton and Rob Fergus' paper [Stochastic Video Generation with a Learned Prior](https://arxiv.org/abs/1802.07687) to build a predictive model for the [Machine Common Sense](https://github.com/NextCenturyCorporation/MCS) project that observes plausible physics events and uses the prediction it makes to detect if an unseen physics event was plausible and generate a heatmap of implausible regions if the event is deemed implausible. This repo only contains the training code. The evaluation process has additional algorithms that are not yet included here.
+
 # Stochastic Video Generation with a Learned Prior
 This is code for the paper [Stochastic Video Generation with a Learned Prior](https://arxiv.org/abs/1802.07687) by Emily Denton and Rob Fergus. See the [project page](https://sites.google.com/view/svglp/) for details and generated video sequences.
 
