@@ -30,7 +30,7 @@ parser.add_argument('--image_width', type=int, default=64, help='the height / wi
 parser.add_argument('--channels', default=1, type=int, help='number of channels for input images. ')
 parser.add_argument('--use_edge_kernels', default=True, type=bool, help='whether to use edge kernels to reduce to 1 channel')
 parser.add_argument('--dataset', default='mcs', help='dataset to train with')
-parser.add_argument('--mcs_task', default='GravitySupportTraining', help='mcs task')
+parser.add_argument('--mcs_task', default='ShapeConstancyTraining', help='mcs task')
 parser.add_argument('--n_past', type=int, default=5, help='number of frames to condition on')
 parser.add_argument('--n_future', type=int, default=30, help='number of frames to predict')
 parser.add_argument('--n_eval', type=int, default=35, help='number of frames to predict at eval time')
