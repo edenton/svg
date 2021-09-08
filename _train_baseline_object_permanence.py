@@ -36,8 +36,7 @@ parser.add_argument('--n_future', type=int, default=45, help='number of frames t
 parser.add_argument('--n_eval', type=int, default=50, help='number of frames to predict at eval time')
 parser.add_argument('--start_min', type=int, default=65, help='min starting time for sampling sequence (0-indexed)')
 parser.add_argument('--start_max', type=int, default=85, help='max starting time for sampling sequence  (0-indexed)')
-parser.add_argument('--sequence_stride', type=int, default=1, help='factor for sequence temporal subsampling (int)')
-parser.add_argument('--reduce_static_frames', type=bool, default=True, help='reduce number of static frames')
+parser.add_argument('--sequence_stride', type=int, default=3, help='factor for sequence temporal subsampling (int)')
 parser.add_argument('--rnn_size', type=int, default=256, help='dimensionality of hidden layer')
 parser.add_argument('--prior_rnn_layers', type=int, default=1, help='number of layers')
 parser.add_argument('--posterior_rnn_layers', type=int, default=1, help='number of layers')
@@ -76,7 +75,7 @@ if opt.model_dir != '':
     opt.data_root = data_root
     opt.log_dir = '%s/continued_lr%s' % (opt.log_dir, opt.lr)
 else:
-    name = 'newmodel=%s%dx%d-rnn_size=%d-predictor-posterior-rnn_layers=%d-%d-n_past=%d-n_future=%d-lr=%.4f-g_dim=%d-z_dim=%d-last_frame_skip=%d-beta=%.7f-gamma=%.7f%s' % (opt.model, opt.image_width, opt.image_width, opt.rnn_size, opt.predictor_rnn_layers, opt.posterior_rnn_layers, opt.n_past, opt.n_future, opt.lr, opt.g_dim, opt.z_dim, opt.last_frame_skip, opt.beta, opt.gamma, opt.name)
+    name = 'model=%s%dx%d-rnn_size=%d-predictor-posterior-rnn_layers=%d-%d-n_past=%d-n_future=%d-lr=%.4f-g_dim=%d-z_dim=%d-last_frame_skip=%d-beta=%.7f-gamma=%.7f%s' % (opt.model, opt.image_width, opt.image_width, opt.rnn_size, opt.predictor_rnn_layers, opt.posterior_rnn_layers, opt.n_past, opt.n_future, opt.lr, opt.g_dim, opt.z_dim, opt.last_frame_skip, opt.beta, opt.gamma, opt.name)
     if opt.dataset == 'smmnist':
         opt.log_dir = '%s/%s-%d/%s' % (opt.log_dir, opt.dataset, opt.num_digits, name)
     elif opt.dataset == 'mcs':

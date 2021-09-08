@@ -31,7 +31,7 @@ parser.add_argument('--epoch_size', type=int, default=1000, help='epoch size')
 parser.add_argument('--image_width', type=int, default=64, help='the height / width of the input image to network')
 parser.add_argument('--channels', default=1, type=int)
 parser.add_argument('--use_edge_kernels', action='store_true')
-parser.add_argument('--dataset', default='mcs_test', help='dataset to train with')
+parser.add_argument('--dataset', default='mcs', help='dataset to train with')
 parser.add_argument('--mcs_task', default='SpatioTemporalContinuityTraining4', help='mcs task')
 parser.add_argument('--n_past', type=int, default=5, help='number of frames to condition on')
 parser.add_argument('--n_future', type=int, default=195, help='number of frames to predict')
@@ -49,7 +49,7 @@ parser.add_argument('--num_digits', type=int, default=2, help='number of digits 
 parser.add_argument('--last_frame_skip', action='store_true',
                     help='if true, skip connections go between frame t and frame t+t rather than last ground truth frame')
 opt = parser.parse_args()
-BATCH_SIZE = opt.batch_size
+BATCH_SIZE = 1
 saved_model = None
 if opt.model_dir != '':
     models = glob.glob(f'{opt.model_dir}/model_*.pth')
@@ -60,12 +60,24 @@ if opt.model_dir != '':
     dataset = opt.dataset
     mcs_task = opt.mcs_task
     n_future = opt.n_future
+    data_root = opt.data_root
     opt = saved_model['opt']
     opt.batch_size = BATCH_SIZE
     opt.niter = niter  # update number of epochs to train for
     opt.dataset = dataset
     opt.mcs_task = mcs_task
     opt.n_future = n_future
+    opt.data_root = data_root
+    opt.start_min = 0
+    opt.start_max = None
+    frame_predictor = saved_model['frame_predictor'].cuda()
+    frame_predictor.batch_size = BATCH_SIZE
+    posterior = saved_model['posterior'].cuda()
+    posterior.batch_size = BATCH_SIZE
+    prior = saved_model['prior'].cuda()
+    prior.batch_size = BATCH_SIZE
+    decoder = saved_model['decoder'].cuda()
+    encoder = saved_model['encoder'].cuda()
 else:
     raise ValueError("Please specify the model to load with the --model_dir argument")
 
@@ -83,16 +95,6 @@ dtype = torch.cuda.FloatTensor
 
 import models.lstm as lstm_models
 
-if opt.model_dir != '':
-    frame_predictor = saved_model['frame_predictor']
-    frame_predictor.batch_size = BATCH_SIZE
-    posterior = saved_model['posterior']
-    posterior.batch_size = BATCH_SIZE
-    prior = saved_model['prior']
-    prior.batch_size = BATCH_SIZE
-else:
-    raise ValueError('Please specify --model_dir')
-
 if opt.model == 'dcgan':
     if opt.image_width == 64:
         import models.dcgan_64 as model
@@ -106,12 +108,6 @@ elif opt.model == 'vgg':
 else:
     raise ValueError('Unknown model: %s' % opt.model)
 
-if opt.model_dir != '':
-    decoder = saved_model['decoder']
-    encoder = saved_model['encoder']
-else:
-    raise ValueError("Please specify the model to load with the --model_dir argument")
-
 # --------- loss functions ------------------------------------
 mse_criterion = nn.MSELoss()
 
@@ -123,12 +119,12 @@ def kl_criterion(mu, logvar):
     return KLD
 
 
-# --------- transfer to gpu ------------------------------------
-frame_predictor.cuda()
-posterior.cuda()
-encoder.cuda()
-decoder.cuda()
-mse_criterion.cuda()
+# # --------- transfer to gpu ------------------------------------
+# frame_predictor.cuda()
+# posterior.cuda()
+# encoder.cuda()
+# decoder.cuda()
+# mse_criterion.cuda()
 
 opt.batch_size = BATCH_SIZE
 opt.epoch_size = 1000
@@ -317,6 +313,7 @@ def do_implasubility_test(z_residual_mean, z_residual_cov, visualize=True):
         last_pred = None
         frame_predictor.hidden = frame_predictor.init_hidden()
         posterior.hidden = posterior.init_hidden()
+        prior.hidden = prior.init_hidden()
         start = 1
         for j in range(start, opt.n_past + opt.n_future):
             h_target = h_posterior[j][0].detach()
@@ -377,7 +374,7 @@ def do_implasubility_test(z_residual_mean, z_residual_cov, visualize=True):
         if visualize:
             for j in range(len(frames)):
                 frame_cv2 = frames[j][0][0].numpy()
-                frame_cv2 /= 3
+                # frame_cv2 /= 3
                 frame_cv2 = np.uint8(np.minimum(frame_cv2, 1.0) * 255.)
                 cv2.imshow('frame', frame_cv2)
                 cv2.waitKey(15)

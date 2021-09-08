@@ -14,7 +14,8 @@ from os import path
 class MCS(object):
 
     def __init__(self, train, data_root, seq_len=20, image_size=64, task='ALL', sequential=None, implausible=False,
-                 test_set=False, im_channels=1, use_edge_kernels=True, labels=False, start_min=None, start_max=None, sequence_stride=None):
+                 test_set=False, im_channels=1, use_edge_kernels=True, labels=False, start_min=None, start_max=None, sequence_stride=None,
+                 reduce_static_frames=False):
         # if implausible is set to True, generates "fake" images by cutting out or repeating frames
         self.implausible = implausible
         if test_set:
@@ -34,6 +35,8 @@ class MCS(object):
         self.start_min = start_min
         self.start_max = start_max
         self.sequence_stride = sequence_stride
+        self.reduce_static_frames = reduce_static_frames
+        self.motion_threshold = 0.001
 
         # print('mcs.py: found tasks ', self.tasks)
         self.video_folder = {}
@@ -81,8 +84,16 @@ class MCS(object):
         assert start_min <= start_max
         start = random.randint(start_min, start_max)
         seq = []
+        last_im = None
+        first_movement = None
+        first_static = None
+        second_movement = None
         # choose a random subsequence of frames in the selected video
-        for i in range(start, start + self.seq_len * stride, stride):
+        if not self.reduce_static_frames:
+            end = start + self.seq_len * stride
+        else:
+            end = num_frames
+        for i in range(start, end, stride):
             # i is 0-indexed so we need to add 1 to i
             fname = frame_path + f'{i + 1:04d}.png'
             im = imageio.imread(fname) / np.float32(255.)
@@ -112,8 +123,33 @@ class MCS(object):
                     edge_map /= 3  # 3 channels
                     edge_map /= 12  # to reduce magnitude
                     im = edge_map[..., np.newaxis]
-
+            if self.reduce_static_frames and last_im is not None:
+                motion_magnitude = np.mean(cv2.absdiff(im, last_im)) * 256
+                print(motion_magnitude)
+                if first_movement is None and motion_magnitude > self.motion_threshold:
+                    first_movement = i
+                elif first_movement is not None and motion_magnitude <= self.motion_threshold:
+                    first_static = i
+                elif first_static is not None and motion_magnitude > self.motion_threshold:
+                    second_movement = i
+            last_im = im
             seq.append(im)
+        if self.reduce_static_frames:
+            new_seq = []
+
+            # keep the first and last static frames, then add the frames before and after to fill the sequence
+            len_before = (self.seq_len - 2) // 2
+            len_after = (self.seq_len - 2) - len_before
+            new_seq += seq[first_static - start - len_before: first_static - start + 1]
+            new_seq += seq[second_movement - 1 - start: second_movement - start + len_after]
+
+            print(first_static, second_movement)
+            print(first_static - start - len_before, first_static - start + 1)
+            print(second_movement - 1 - start, second_movement - start + len_after)
+            print(len(new_seq), len(seq))
+            for img in new_seq:
+                cv2.imshow('img', img[:, :, 0])
+                cv2.waitKey(0)
         if self.labels:
             return np.array(seq), label
         else:

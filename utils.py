@@ -110,7 +110,8 @@ def load_dataset(opt, sequential=None, implausible=None):
             use_edge_kernels=opt.use_edge_kernels,
             start_min=opt.start_min,
             start_max=opt.start_max,
-            sequence_stride=opt.sequence_stride)
+            sequence_stride=opt.sequence_stride,
+            reduce_static_frames=opt.reduce_static_frames)
         test_data = MCS(
             train=False,
             data_root=opt.data_root,
@@ -123,7 +124,8 @@ def load_dataset(opt, sequential=None, implausible=None):
             use_edge_kernels=opt.use_edge_kernels,
             start_min=opt.start_min,
             start_max=opt.start_max,
-            sequence_stride=opt.sequence_stride)
+            sequence_stride=opt.sequence_stride,
+            reduce_static_frames=opt.reduce_static_frames)
     elif opt.dataset == 'mcs_test':
         from data.mcs import MCS
         train_data = MCS(
@@ -137,6 +139,10 @@ def load_dataset(opt, sequential=None, implausible=None):
             test_set=True,
             im_channels=opt.channels,
             use_edge_kernels=opt.use_edge_kernels,
+            start_min=opt.start_min,
+            start_max=opt.start_max,
+            sequence_stride=opt.sequence_stride,
+            reduce_static_frames=opt.reduce_static_frames,
             labels=True)
         test_data = MCS(
             train=False,
@@ -149,6 +155,10 @@ def load_dataset(opt, sequential=None, implausible=None):
             test_set=True,
             im_channels=opt.channels,
             use_edge_kernels=opt.use_edge_kernels,
+            start_min=opt.start_min,
+            start_max=opt.start_max,
+            sequence_stride=opt.sequence_stride,
+            reduce_static_frames=opt.reduce_static_frames,
             labels=True)
 
     return train_data, test_data
