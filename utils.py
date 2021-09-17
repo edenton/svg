@@ -111,7 +111,8 @@ def load_dataset(opt, sequential=None, implausible=None):
             start_min=opt.start_min,
             start_max=opt.start_max,
             sequence_stride=opt.sequence_stride,
-            reduce_static_frames=opt.reduce_static_frames)
+            reduce_static_frames=opt.reduce_static_frames,
+            lifting_frame_index=opt.lifting_frame_index,)
         test_data = MCS(
             train=False,
             data_root=opt.data_root,
@@ -125,7 +126,8 @@ def load_dataset(opt, sequential=None, implausible=None):
             start_min=opt.start_min,
             start_max=opt.start_max,
             sequence_stride=opt.sequence_stride,
-            reduce_static_frames=opt.reduce_static_frames)
+            reduce_static_frames=opt.reduce_static_frames,
+            lifting_frame_index=opt.lifting_frame_index,)
     elif opt.dataset == 'mcs_test':
         from data.mcs import MCS
         train_data = MCS(
@@ -143,6 +145,7 @@ def load_dataset(opt, sequential=None, implausible=None):
             start_max=opt.start_max,
             sequence_stride=opt.sequence_stride,
             reduce_static_frames=opt.reduce_static_frames,
+            lifting_frame_index=opt.lifting_frame_index,
             labels=True)
         test_data = MCS(
             train=False,
@@ -159,6 +162,7 @@ def load_dataset(opt, sequential=None, implausible=None):
             start_max=opt.start_max,
             sequence_stride=opt.sequence_stride,
             reduce_static_frames=opt.reduce_static_frames,
+            lifting_frame_index=opt.lifting_frame_index,
             labels=True)
 
     return train_data, test_data

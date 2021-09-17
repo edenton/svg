@@ -15,7 +15,7 @@ class MCS(object):
 
     def __init__(self, train, data_root, seq_len=20, image_size=64, task='ALL', sequential=None, implausible=False,
                  test_set=False, im_channels=1, use_edge_kernels=True, labels=False, start_min=None, start_max=None, sequence_stride=None,
-                 reduce_static_frames=False):
+                 reduce_static_frames=False, object_exiting_frame_offset=20, lifting_frame_index=None,):
         # if implausible is set to True, generates "fake" images by cutting out or repeating frames
         self.implausible = implausible
         if test_set:
@@ -36,7 +36,7 @@ class MCS(object):
         self.start_max = start_max
         self.sequence_stride = sequence_stride
         self.reduce_static_frames = reduce_static_frames
-        self.motion_threshold = 0.001
+        self.motion_threshold = 0.1
 
         # print('mcs.py: found tasks ', self.tasks)
         self.video_folder = {}
@@ -125,31 +125,40 @@ class MCS(object):
                     im = edge_map[..., np.newaxis]
             if self.reduce_static_frames and last_im is not None:
                 motion_magnitude = np.mean(cv2.absdiff(im, last_im)) * 256
-                print(motion_magnitude)
+                # print(motion_magnitude)
                 if first_movement is None and motion_magnitude > self.motion_threshold:
                     first_movement = i
-                elif first_movement is not None and motion_magnitude <= self.motion_threshold:
+                elif first_movement is not None and first_static is None and motion_magnitude <= self.motion_threshold:
                     first_static = i
-                elif first_static is not None and motion_magnitude > self.motion_threshold:
-                    second_movement = i
+                # elif first_static is not None and second_movement is None and motion_magnitude > self.motion_threshold:
+                #     second_movement = i
             last_im = im
             seq.append(im)
         if self.reduce_static_frames:
             new_seq = []
 
             # keep the first and last static frames, then add the frames before and after to fill the sequence
-            len_before = (self.seq_len - 2) // 2
-            len_after = (self.seq_len - 2) - len_before
-            new_seq += seq[first_static - start - len_before: first_static - start + 1]
-            new_seq += seq[second_movement - 1 - start: second_movement - start + len_after]
-
-            print(first_static, second_movement)
-            print(first_static - start - len_before, first_static - start + 1)
-            print(second_movement - 1 - start, second_movement - start + len_after)
-            print(len(new_seq), len(seq))
-            for img in new_seq:
-                cv2.imshow('img', img[:, :, 0])
-                cv2.waitKey(0)
+            # len_before = (self.seq_len - 1) // 2
+            # len_after = (self.seq_len - 1) - len_before
+            # new_seq += seq[first_movement - start: first_movement - start + 5]
+            first_static = min(165, max(start + 7, first_static))  # so don't run into negative indices
+            new_seq += seq[first_static - start - 7: first_static - start + 3]
+            assert len(new_seq) == 10
+            new_seq += seq[first_static - start + 3 + 12: first_static - start + 3 + 22]
+            assert len(new_seq) == 20
+            new_seq += seq[200 - start: 200 - start + (self.seq_len - 20)]
+            assert len(new_seq) == 40
+            # new_seq = seq[first_movement - start:]
+            # new_seq += seq[first_static - start:]
+            # new_seq += seq[second_movement - start:]
+            # print(first_movement, first_static, len(new_seq), self.seq_len)
+            # print(first_static - start - len_before, first_static - start + 1)
+            # print(second_movement - 1 - start, second_movement - start + len_after)
+            # print(len(new_seq), len(seq))
+            # for img in new_seq:
+            #     cv2.imshow('img', img[:, :, 0])
+            #     cv2.waitKey(1)
+            seq = new_seq
         if self.labels:
             return np.array(seq), label
         else:

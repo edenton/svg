@@ -31,13 +31,14 @@ parser.add_argument('--channels', default=1, type=int, help='number of channels 
 parser.add_argument('--use_edge_kernels', default=True, type=bool, help='whether to use edge kernels to reduce to 1 channel')
 parser.add_argument('--dataset', default='mcs', help='dataset to train with')
 parser.add_argument('--mcs_task', default='ObjectPermanenceTraining4', help='mcs task')
-parser.add_argument('--n_past', type=int, default=5, help='number of frames to condition on')
-parser.add_argument('--n_future', type=int, default=45, help='number of frames to predict')
-parser.add_argument('--n_eval', type=int, default=50, help='number of frames to predict at eval time')
-parser.add_argument('--start_min', type=int, default=65, help='min starting time for sampling sequence (0-indexed)')
-parser.add_argument('--start_max', type=int, default=85, help='max starting time for sampling sequence  (0-indexed)')
+parser.add_argument('--n_past', type=int, default=20, help='number of frames to condition on')
+parser.add_argument('--n_future', type=int, default=20, help='number of frames to predict')
+parser.add_argument('--n_eval', type=int, default=40, help='number of frames to predict at eval time')
+parser.add_argument('--start_min', type=int, default=75, help='min starting time for sampling sequence (0-indexed)')
+parser.add_argument('--start_max', type=int, default=75, help='max starting time for sampling sequence  (0-indexed)')
 parser.add_argument('--sequence_stride', type=int, default=1, help='factor for sequence temporal subsampling (int)')
 parser.add_argument('--reduce_static_frames', type=bool, default=True, help='reduce number of static frames')
+parser.add_argument('--lifting_frame_index', type=int, default=200, help='index of frame when panels are lifted')
 parser.add_argument('--rnn_size', type=int, default=256, help='dimensionality of hidden layer')
 parser.add_argument('--prior_rnn_layers', type=int, default=1, help='number of layers')
 parser.add_argument('--posterior_rnn_layers', type=int, default=1, help='number of layers')
@@ -47,7 +48,7 @@ parser.add_argument('--g_dim', type=int, default=128, help='dimensionality of en
 parser.add_argument('--beta', type=float, default=0.0001, help='weighting on KL to prior')
 parser.add_argument('--gamma', type=float, default=0.0001, help='weighting on h vs h posterior')
 parser.add_argument('--model', default='vgg', help='model type (dcgan | vgg)')
-parser.add_argument('--data_threads', type=int, default=12, help='number of data loading threads')
+parser.add_argument('--data_threads', type=int, default=1, help='number of data loading threads')
 parser.add_argument('--num_digits', type=int, default=2, help='number of digits for moving mnist')
 parser.add_argument('--last_frame_skip', action='store_true', help='if true, skip connections go between frame t and frame t+1 rather than last ground truth frame')
 
@@ -380,11 +381,9 @@ def train(x):
         x_pred = decoder([h_pred, skip])
         gray_target_frame = utils.torch_rgb_img_to_gray(x[i])
 
-        still_frames = x_diff[i] <= 5e-6
-        weights = torch.pow(0.05, still_frames).detach()[:, None, None, None]
-        mse += mse_criterion(weights * x_pred, weights * gray_target_frame)
+        mse += mse_criterion(x_pred, gray_target_frame)
         # penalize prior for being far from posterior
-        mse_residual += opt.gamma * torch.mean(weights * torch.square(z_t.detach() - z_t_hat))
+        mse_residual += opt.gamma * torch.mean(torch.square(z_t.detach() - z_t_hat))
         h = h_target
 
     loss = mse + mse_residual
