@@ -390,6 +390,7 @@ def train(x):
 for epoch in range(opt.niter):
     frame_predictor.train()
     posterior.train()
+    prior.train()
     encoder.train()
     decoder.train()
     epoch_mse = 0
@@ -410,6 +411,8 @@ for epoch in range(opt.niter):
     utils.clear_progressbar()
 
     print('[%02d] mse loss: %.5f | residual mse: %.20f (%d)' % (epoch, epoch_mse/opt.epoch_size, epoch_mse_residual/opt.epoch_size, epoch*opt.epoch_size*opt.batch_size))
+    with open(os.path.join(opt.log_dir, 'loss.txt'), 'a') as f:
+        f.write('[%02d] mse loss: %.5f | residual mse: %.20f (%d)' % (epoch, epoch_mse/opt.epoch_size, epoch_mse_residual/opt.epoch_size, epoch*opt.epoch_size*opt.batch_size))
 
     # plot some stuff
     frame_predictor.eval()

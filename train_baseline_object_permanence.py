@@ -35,7 +35,7 @@ parser.add_argument('--n_past', type=int, default=20, help='number of frames to 
 parser.add_argument('--n_future', type=int, default=20, help='number of frames to predict')
 parser.add_argument('--n_eval', type=int, default=40, help='number of frames to predict at eval time')
 parser.add_argument('--start_min', type=int, default=75, help='min starting time for sampling sequence (0-indexed)')
-parser.add_argument('--start_max', type=int, default=75, help='max starting time for sampling sequence  (0-indexed)')
+parser.add_argument('--start_max', type=int, default=77, help='max starting time for sampling sequence  (0-indexed)')
 parser.add_argument('--sequence_stride', type=int, default=1, help='factor for sequence temporal subsampling (int)')
 parser.add_argument('--reduce_static_frames', type=bool, default=True, help='reduce number of static frames')
 parser.add_argument('--lifting_frame_index', type=int, default=200, help='index of frame when panels are lifted')
@@ -48,7 +48,7 @@ parser.add_argument('--g_dim', type=int, default=128, help='dimensionality of en
 parser.add_argument('--beta', type=float, default=0.0001, help='weighting on KL to prior')
 parser.add_argument('--gamma', type=float, default=0.0001, help='weighting on h vs h posterior')
 parser.add_argument('--model', default='vgg', help='model type (dcgan | vgg)')
-parser.add_argument('--data_threads', type=int, default=1, help='number of data loading threads')
+parser.add_argument('--data_threads', type=int, default=12, help='number of data loading threads')
 parser.add_argument('--num_digits', type=int, default=2, help='number of digits for moving mnist')
 parser.add_argument('--last_frame_skip', action='store_true', help='if true, skip connections go between frame t and frame t+1 rather than last ground truth frame')
 
@@ -77,7 +77,7 @@ if opt.model_dir != '':
     opt.data_root = data_root
     opt.log_dir = '%s/continued_lr%s' % (opt.log_dir, opt.lr)
 else:
-    name = 'newmodel=%s%dx%d-rnn_size=%d-predictor-posterior-rnn_layers=%d-%d-n_past=%d-n_future=%d-lr=%.4f-g_dim=%d-z_dim=%d-last_frame_skip=%d-beta=%.7f-gamma=%.7f%s' % (opt.model, opt.image_width, opt.image_width, opt.rnn_size, opt.predictor_rnn_layers, opt.posterior_rnn_layers, opt.n_past, opt.n_future, opt.lr, opt.g_dim, opt.z_dim, opt.last_frame_skip, opt.beta, opt.gamma, opt.name)
+    name = 'model=%s%dx%d-rnn_size=%d-predictor-posterior-rnn_layers=%d-%d-n_past=%d-n_future=%d-lr=%.4f-g_dim=%d-z_dim=%d-last_frame_skip=%d-beta=%.7f-gamma=%.7f%s' % (opt.model, opt.image_width, opt.image_width, opt.rnn_size, opt.predictor_rnn_layers, opt.posterior_rnn_layers, opt.n_past, opt.n_future, opt.lr, opt.g_dim, opt.z_dim, opt.last_frame_skip, opt.beta, opt.gamma, opt.name)
     if opt.dataset == 'smmnist':
         opt.log_dir = '%s/%s-%d/%s' % (opt.log_dir, opt.dataset, opt.num_digits, name)
     elif opt.dataset == 'mcs':
@@ -85,8 +85,8 @@ else:
     else:
         opt.log_dir = '%s/%s/%s' % (opt.log_dir, opt.dataset, name)
 
-os.makedirs('%s/gen/' % opt.log_dir, exist_ok=True)
-os.makedirs('%s/plots/' % opt.log_dir, exist_ok=True)
+os.makedirs('%s/gen/' % opt.log_dir, exist_ok=False)
+os.makedirs('%s/plots/' % opt.log_dir, exist_ok=False)
 with open(os.path.join(opt.log_dir, 'opt.json'), 'w') as f:
     opt2 = opt.__dict__.copy()
     if isinstance(opt2['optimizer'], type):
@@ -359,14 +359,6 @@ def train(x):
 
     mse = 0
     mse_residual = 0
-    # x: T x B x C x H x W
-    x_diff = [1]
-    for i in range(1, len(x)):
-        diff = torch.abs(x[i] - x[i - 1])
-        diff = torch.mean(diff, dim=(1, 2, 3)).detach()  # mean over channels, width, and height
-        x_diff.append(diff)
-
-        # print(i, x_diff > 1e-6)
     h = encoder(x[0])
     for i in range(1, opt.n_past+opt.n_future):
         h_target = encoder(x[i])
@@ -380,7 +372,6 @@ def train(x):
         h_pred = frame_predictor(torch.cat([h, z_t], 1))
         x_pred = decoder([h_pred, skip])
         gray_target_frame = utils.torch_rgb_img_to_gray(x[i])
-
         mse += mse_criterion(x_pred, gray_target_frame)
         # penalize prior for being far from posterior
         mse_residual += opt.gamma * torch.mean(torch.square(z_t.detach() - z_t_hat))
@@ -402,6 +393,7 @@ def train(x):
 for epoch in range(opt.niter):
     frame_predictor.train()
     posterior.train()
+    prior.train()
     encoder.train()
     decoder.train()
     epoch_mse = 0
@@ -422,7 +414,8 @@ for epoch in range(opt.niter):
     utils.clear_progressbar()
 
     print('[%02d] mse loss: %.5f | residual mse: %.20f (%d)' % (epoch, epoch_mse/opt.epoch_size, epoch_mse_residual/opt.epoch_size, epoch*opt.epoch_size*opt.batch_size))
-
+    with open(os.path.join(opt.log_dir, 'loss.txt'), 'a') as f:
+        f.write('[%02d] mse loss: %.5f | residual mse: %.20f (%d)' % (epoch, epoch_mse/opt.epoch_size, epoch_mse_residual/opt.epoch_size, epoch*opt.epoch_size*opt.batch_size))
     # plot some stuff
     frame_predictor.eval()
     posterior.eval()
