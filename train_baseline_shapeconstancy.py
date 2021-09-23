@@ -48,7 +48,7 @@ parser.add_argument('--g_dim', type=int, default=128, help='dimensionality of en
 parser.add_argument('--beta', type=float, default=0.0001, help='weighting on KL to prior')
 parser.add_argument('--gamma', type=float, default=0.0001, help='weighting on h vs h posterior')
 parser.add_argument('--model', default='vgg', help='model type (dcgan | vgg)')
-parser.add_argument('--data_threads', type=int, default=1, help='number of data loading threads')
+parser.add_argument('--data_threads', type=int, default=12, help='number of data loading threads')
 parser.add_argument('--num_digits', type=int, default=2, help='number of digits for moving mnist')
 parser.add_argument('--last_frame_skip', action='store_true', help='if true, skip connections go between frame t and frame t+1 rather than last ground truth frame')
 
@@ -155,11 +155,18 @@ else:
     encoder.apply(utils.init_weights)
     decoder.apply(utils.init_weights)
 
-frame_predictor_optimizer = opt.optimizer(frame_predictor.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-posterior_optimizer = opt.optimizer(posterior.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-prior_optimizer = opt.optimizer(prior.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-encoder_optimizer = opt.optimizer(encoder.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-decoder_optimizer = opt.optimizer(decoder.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+if opt.optimizer == optim.SGD:
+    frame_predictor_optimizer = opt.optimizer(frame_predictor.parameters(), lr=opt.lr, momentum=opt.beta1)
+    posterior_optimizer = opt.optimizer(posterior.parameters(), lr=opt.lr, momentum=opt.beta1)
+    prior_optimizer = opt.optimizer(prior.parameters(), lr=opt.lr, momentum=opt.beta1)
+    encoder_optimizer = opt.optimizer(encoder.parameters(), lr=opt.lr, momentum=opt.beta1)
+    decoder_optimizer = opt.optimizer(decoder.parameters(), lr=opt.lr, momentum=opt.beta1)
+else:
+    frame_predictor_optimizer = opt.optimizer(frame_predictor.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+    posterior_optimizer = opt.optimizer(posterior.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+    prior_optimizer = opt.optimizer(prior.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+    encoder_optimizer = opt.optimizer(encoder.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+    decoder_optimizer = opt.optimizer(decoder.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
 
 # --------- loss functions ------------------------------------
 mse_criterion = nn.MSELoss()

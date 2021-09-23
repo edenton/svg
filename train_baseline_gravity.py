@@ -152,11 +152,18 @@ else:
     encoder.apply(utils.init_weights)
     decoder.apply(utils.init_weights)
 
-frame_predictor_optimizer = opt.optimizer(frame_predictor.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-posterior_optimizer = opt.optimizer(posterior.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-prior_optimizer = opt.optimizer(prior.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-encoder_optimizer = opt.optimizer(encoder.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-decoder_optimizer = opt.optimizer(decoder.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+if opt.optimizer == optim.SGD:
+    frame_predictor_optimizer = opt.optimizer(frame_predictor.parameters(), lr=opt.lr, momentum=opt.beta1)
+    posterior_optimizer = opt.optimizer(posterior.parameters(), lr=opt.lr, momentum=opt.beta1)
+    prior_optimizer = opt.optimizer(prior.parameters(), lr=opt.lr, momentum=opt.beta1)
+    encoder_optimizer = opt.optimizer(encoder.parameters(), lr=opt.lr, momentum=opt.beta1)
+    decoder_optimizer = opt.optimizer(decoder.parameters(), lr=opt.lr, momentum=opt.beta1)
+else:
+    frame_predictor_optimizer = opt.optimizer(frame_predictor.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+    posterior_optimizer = opt.optimizer(posterior.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+    prior_optimizer = opt.optimizer(prior.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+    encoder_optimizer = opt.optimizer(encoder.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+    decoder_optimizer = opt.optimizer(decoder.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
 
 # --------- loss functions ------------------------------------
 mse_criterion = nn.MSELoss()
