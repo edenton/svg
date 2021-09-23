@@ -15,7 +15,7 @@ class MCS(object):
 
     def __init__(self, train, data_root, seq_len=20, image_size=64, task='ALL', sequential=None, implausible=False,
                  test_set=False, im_channels=1, use_edge_kernels=True, labels=False, start_min=None, start_max=None, sequence_stride=None,
-                 reduce_static_frames=False, object_exiting_frame_offset=20, lifting_frame_index=None,):
+                 reduce_static_frames=False, is_shape_constancy=False):
         # if implausible is set to True, generates "fake" images by cutting out or repeating frames
         self.implausible = implausible
         if test_set:
@@ -37,6 +37,7 @@ class MCS(object):
         self.sequence_stride = sequence_stride
         self.reduce_static_frames = reduce_static_frames
         self.motion_threshold = 0.1
+        self.is_shape_constancy = is_shape_constancy
 
         # print('mcs.py: found tasks ', self.tasks)
         self.video_folder = {}
@@ -141,13 +142,22 @@ class MCS(object):
             # len_before = (self.seq_len - 1) // 2
             # len_after = (self.seq_len - 1) - len_before
             # new_seq += seq[first_movement - start: first_movement - start + 5]
-            first_static = min(165, max(start + 7, first_static))  # so don't run into negative indices
-            new_seq += seq[first_static - start - 7: first_static - start + 3]
-            assert len(new_seq) == 10
-            new_seq += seq[first_static - start + 3 + 12: first_static - start + 3 + 22]
-            assert len(new_seq) == 20
-            new_seq += seq[200 - start: 200 - start + (self.seq_len - 20)]
-            assert len(new_seq) == 40
+            if self.is_shape_constancy:
+                first_static = min(105, max(start + 10, first_static))  # so we don't run into negative indices
+                new_seq += seq[first_static - start - 10: first_static - start + 3]
+                assert len(new_seq) == 13
+            else:
+                first_static = min(165, max(start + 7, first_static))  # so we don't run into negative indices
+                new_seq += seq[first_static - start - 7: first_static - start + 3]
+                assert len(new_seq) == 10
+
+            if self.is_shape_constancy:
+                new_seq += seq[144 - start: 144 - start + (self.seq_len - 13)]
+            else:
+                new_seq += seq[first_static - start + 3 + 12: first_static - start + 3 + 22]
+                assert len(new_seq) == 20
+                new_seq += seq[200 - start: 200 - start + (self.seq_len - 20)]
+            assert len(new_seq) == self.seq_len
             # new_seq = seq[first_movement - start:]
             # new_seq += seq[first_static - start:]
             # new_seq += seq[second_movement - start:]
@@ -157,7 +167,7 @@ class MCS(object):
             # print(len(new_seq), len(seq))
             # for img in new_seq:
             #     cv2.imshow('img', img[:, :, 0])
-            #     cv2.waitKey(1)
+            #     cv2.waitKey(0)
             seq = new_seq
         if self.labels:
             return np.array(seq), label

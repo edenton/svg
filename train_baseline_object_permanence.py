@@ -38,7 +38,7 @@ parser.add_argument('--start_min', type=int, default=75, help='min starting time
 parser.add_argument('--start_max', type=int, default=77, help='max starting time for sampling sequence  (0-indexed)')
 parser.add_argument('--sequence_stride', type=int, default=1, help='factor for sequence temporal subsampling (int)')
 parser.add_argument('--reduce_static_frames', type=bool, default=True, help='reduce number of static frames')
-parser.add_argument('--lifting_frame_index', type=int, default=200, help='index of frame when panels are lifted')
+# parser.add_argument('--lifting_frame_index', type=int, default=200, help='index of frame when panels are lifted')
 parser.add_argument('--rnn_size', type=int, default=256, help='dimensionality of hidden layer')
 parser.add_argument('--prior_rnn_layers', type=int, default=1, help='number of layers')
 parser.add_argument('--posterior_rnn_layers', type=int, default=1, help='number of layers')

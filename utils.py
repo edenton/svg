@@ -98,6 +98,8 @@ def load_dataset(opt, sequential=None, implausible=None):
             image_size=opt.image_width)
     elif opt.dataset == 'mcs':
         from data.mcs import MCS
+        is_shape_constancy = opt.is_shape_constancy if "is_shape_constancy" in opt.__dict__ else False
+        reduce_static_frames = opt.reduce_static_frames if "reduce_static_frames" in opt.__dict__ else False
         train_data = MCS(
             train=True,
             data_root=opt.data_root,
@@ -111,8 +113,8 @@ def load_dataset(opt, sequential=None, implausible=None):
             start_min=opt.start_min,
             start_max=opt.start_max,
             sequence_stride=opt.sequence_stride,
-            reduce_static_frames=opt.reduce_static_frames,
-            lifting_frame_index=opt.lifting_frame_index,)
+            reduce_static_frames=reduce_static_frames,
+            is_shape_constancy=is_shape_constancy,)
         test_data = MCS(
             train=False,
             data_root=opt.data_root,
@@ -126,9 +128,11 @@ def load_dataset(opt, sequential=None, implausible=None):
             start_min=opt.start_min,
             start_max=opt.start_max,
             sequence_stride=opt.sequence_stride,
-            reduce_static_frames=opt.reduce_static_frames,
-            lifting_frame_index=opt.lifting_frame_index,)
+            reduce_static_frames=reduce_static_frames,
+            is_shape_constancy=is_shape_constancy,)
     elif opt.dataset == 'mcs_test':
+        is_shape_constancy = opt.is_shape_constancy if "is_shape_constancy" in opt.__dict__ else False
+        reduce_static_frames = opt.reduce_static_frames if "reduce_static_frames" in opt.__dict__ else False
         from data.mcs import MCS
         train_data = MCS(
             train=True,
@@ -144,8 +148,8 @@ def load_dataset(opt, sequential=None, implausible=None):
             start_min=opt.start_min,
             start_max=opt.start_max,
             sequence_stride=opt.sequence_stride,
-            reduce_static_frames=opt.reduce_static_frames,
-            lifting_frame_index=opt.lifting_frame_index,
+            reduce_static_frames=reduce_static_frames,
+            is_shape_constancy=is_shape_constancy,
             labels=True)
         test_data = MCS(
             train=False,
@@ -161,8 +165,8 @@ def load_dataset(opt, sequential=None, implausible=None):
             start_min=opt.start_min,
             start_max=opt.start_max,
             sequence_stride=opt.sequence_stride,
-            reduce_static_frames=opt.reduce_static_frames,
-            lifting_frame_index=opt.lifting_frame_index,
+            reduce_static_frames=reduce_static_frames,
+            is_shape_constancy=is_shape_constancy,
             labels=True)
 
     return train_data, test_data
