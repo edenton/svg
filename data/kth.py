@@ -4,7 +4,9 @@ import numpy as np
 import socket
 import torch
 from scipy import misc
-from torch.utils.serialization import load_lua
+from imageio import imread
+# from torch.utils.serialization import load_lua
+import torchfile
 
 class KTH(object):
 
@@ -26,7 +28,8 @@ class KTH(object):
 
         self.data= {}
         for c in self.classes:
-            self.data[c] = load_lua('%s/%s/%s_meta%dx%d.t7' % (self.data_root, c, data_type, image_size, image_size))
+            self.data[c] = torchfile.load('%s/%s/%s_meta%dx%d.t7' % (self.data_root, c, data_type, image_size, image_size))
+            # self.data[c] = load_lua('%s/%s/%s_meta%dx%d.t7' % (self.data_root, c, data_type, image_size, image_size))
      
 
         self.seed_set = False
@@ -38,17 +41,21 @@ class KTH(object):
             c = self.classes[c_idx]
             vid_idx = np.random.randint(len(self.data[c]))
             vid = self.data[c][vid_idx]
-            seq_idx = np.random.randint(len(vid['files']))
-            if len(vid['files'][seq_idx]) - t >= 0:
+            seq_idx = np.random.randint(len(vid[b'files']))
+            if len(vid[b'files'][seq_idx]) - t >= 0:
                 break
-        dname = '%s/%s/%s' % (self.data_root, c, vid['vid'])
-        st = random.randint(0, len(vid['files'][seq_idx])-t)
+        # dname = '%s/%s/%s' % (self.data_root, c, vid[b'vid'])
+        dname = '%s/%s/%s' % (self.data_root, c, vid[b'vid'].decode())
+        # st = random.randint(0, len(vid[b'files'][seq_idx])-t)
+        st = random.randint(0, len(vid[b'files'][seq_idx])-t)
            
 
         seq = [] 
         for i in range(st, st+t):
-            fname = '%s/%s' % (dname, vid['files'][seq_idx][i])
-            im = misc.imread(fname)/255.
+            # fname = '%s/%s' % (dname, vid[b'files'][seq_idx][i])
+            fname = '%s/%s' % (dname, vid[b'files'][seq_idx][i].decode())
+            # im = misc.imread(fname)/255.
+            im = imread(fname)/255.
             seq.append(im[:, :, 0].reshape(self.image_size, self.image_size, 1))
         return np.array(seq)
 
@@ -62,4 +69,3 @@ class KTH(object):
 
     def __len__(self):
         return len(self.dirs)*36*5 # arbitrary
-
